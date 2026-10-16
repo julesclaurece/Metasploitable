@@ -37,14 +37,114 @@
       <div class="meta-line">Résultat : accès root (session Meterpreter)</div>
     </li>
     <li>
-      <a href="services/distcc.html">DistCC Daemon — RCE (CVE-2004-2687)</a>
+      <a href="services/ms1-distcc.html">DistCC Daemon — RCE (CVE-2004-2687)</a>
       <span class="badge badge-vm1">MS1 · port 3632</span>
       <div class="meta-line">Résultat : accès utilisateur daemon — diagnostic ACL requis</div>
     </li>
     <li>
-      <a href="services/ftp-modcopy.html">ProFTPD 1.3.5 — mod_copy RCE (CVE-2015-3306)</a>
+      <a href="services/ms3-ftp-modcopy.html">ProFTPD 1.3.5 — mod_copy RCE (CVE-2015-3306)</a>
       <span class="badge badge-vm3">MS3 · port 21</span>
       <div class="meta-line">Résultat : accès utilisateur www-data</div>
+    </li>
+    <li>
+      <a href="services/ms1-tomcat.html">Tomcat Manager — Déploiement WAR (CVE-2009-3548)</a>
+      <span class="badge badge-vm1">MS1 · port 8180</span>
+      <div class="meta-line">Résultat : shell tomcat55 (identifiants manager par défaut)</div>
+    </li>
+    <li>
+      <a href="services/ms1-tikiwiki.html">TikiWiki 1.9.5 — RCE tiki-graph_formula.php (CVE-2007-5423)</a>
+      <span class="badge badge-vm1">MS1 · port 80</span>
+      <div class="meta-line">Résultat : reverse shell www-data (contournement de 2 filtres)</div>
+    </li>
+    <li>
+      <a href="services/ms1-twiki.html">TWiki 20030201 — RCE search.cgi (CVE-2004-1037)</a>
+      <span class="badge badge-vm1">MS1 · port 80</span>
+      <div class="meta-line">Résultat : shell www-data (confirmation par délai, puis Metasploit)</div>
+    </li>
+    <li>
+      <a href="services/ms1-samba-enum.html">Samba 3.0.20 — Énumération sans authentification</a>
+      <span class="badge badge-vm1">MS1 · ports 139/445</span>
+      <div class="meta-line">Résultat : 35 comptes + 2 partages, sans identifiants</div>
+    </li>
+    <li>
+      <a href="services/ms1-samba-exploit.html">Samba — username map script RCE (CVE-2007-2447)</a>
+      <span class="badge badge-vm1">MS1 · port 445</span>
+      <div class="meta-line">Résultat : accès root complet (premier root sur MS1)</div>
+    </li>
+    <li>
+      <a href="services/ms1-netbios.html">NetBIOS Name Service</a>
+      <span class="badge badge-vm1">MS1 · port 137/udp</span>
+      <div class="meta-line">Résultat : nom de machine et domaine, sans toucher SMB</div>
+    </li>
+    <li>
+      <a href="services/ms1-mysql.html">MySQL 5.0.51a — Identifiants par défaut + privilège FILE</a>
+      <span class="badge badge-vm1">MS1 · port 3306</span>
+      <div class="meta-line">Résultat : root base + lecture/écriture arbitraire de fichiers</div>
+    </li>
+    <li>
+      <a href="services/ms1-postgresql.html">PostgreSQL 8.3.1 — RCE via UDF compilée (CVE-2007-3280)</a>
+      <span class="badge badge-vm1">MS1 · port 5432</span>
+      <div class="meta-line">Résultat : shell postgres (2 tentatives manuelles réfutées avant)</div>
+    </li>
+    <li>
+      <a href="services/ms1-ajp13.html">AJP13 — Lecture de fichiers via connecteur Tomcat</a>
+      <span class="badge badge-vm1">MS1 · port 8009</span>
+      <div class="meta-line">Résultat : lecture arbitraire de fichiers (hors plage CVE officielle)</div>
+    </li>
+    <li>
+      <a href="services/ms1-smtp.html">SMTP Postfix — Énumération d'utilisateurs (VRFY)</a>
+      <span class="badge badge-vm1">MS1 · port 25</span>
+      <div class="meta-line">Résultat : 35 comptes confirmés, recoupement avec Samba</div>
+    </li>
+    <li>
+      <a href="services/ms2-unrealircd.html">UnrealIRCd 3.2.8.1 — Backdoor (CVE-2010-2075)</a>
+      <span class="badge badge-vm2">MS2 · port 6667</span>
+      <div class="meta-line">Résultat : accès root (shell de commande, payload perl)</div>
+    </li>
+    <li>
+      <a href="services/ms2-distcc.html">distccd — Exécution de commande (CVE-2004-2687)</a>
+      <span class="badge badge-vm2">MS2 · port 3632</span>
+      <div class="meta-line">Résultat : shell daemon (uid=1, accès système)</div>
+    </li>
+    <li>
+      <a href="services/ms2-samba-usermap.html">Samba — username map script RCE (CVE-2007-2447)</a>
+      <span class="badge badge-vm2">MS2 · ports 139/445</span>
+      <div class="meta-line">Résultat : accès root (sans identifiant valide)</div>
+    </li>
+    <li>
+      <a href="services/ms2-nfs.html">NFS — export racine en no_root_squash</a>
+      <span class="badge badge-vm2">MS2 · port 2049</span>
+      <div class="meta-line">Résultat : accès root au filesystem cible (lecture /etc/shadow)</div>
+    </li>
+    <li>
+      <a href="services/ms2-mysql.html">MySQL 5.0.51a — root sans mot de passe + privilège FILE</a>
+      <span class="badge badge-vm2">MS2 · port 3306</span>
+      <div class="meta-line">Résultat : contrôle total de la base + lecture arbitraire de fichiers</div>
+    </li>
+    <li>
+      <a href="services/ms2-tomcat.html">Tomcat Manager — Déploiement WAR (CVE-2009-3548)</a>
+      <span class="badge badge-vm2">MS2 · port 8180</span>
+      <div class="meta-line">Résultat : shell tomcat55 (identifiants manager par défaut)</div>
+    </li>
+    <li>
+      <a href="services/ms2-web.html">Web Apache — WebDAV → RCE (/dav/)</a>
+      <span class="badge badge-vm2">MS2 · port 80</span>
+      <div class="meta-line">Résultat : RCE www-data (PUT WebDAV + exécution PHP)</div>
+    </li>
+    <li>
+      <a href="services/ms2-dvwa.html">DVWA — Injection de commande (/dvwa/)</a>
+      <span class="badge badge-vm2">MS2 · port 80</span>
+      <div class="meta-line">Résultat : RCE www-data (command injection, sécurité low)</div>
+    </li>
+    <li>
+      <a href="services/ms2-dvwa-sqli.html">DVWA — Injection SQL (/dvwa/)</a>
+      <span class="badge badge-vm2">MS2 · port 80</span>
+      <div class="meta-line">Résultat : dump de la table users + hash MD5 (UNION SQLi)</div>
+    </li>
+    <li>
+      <a href="services/ms2-twiki.html">TWiki — RCE fonction de recherche (CVE-2004-1037)</a>
+      <span class="badge badge-vm2">MS2 · port 80</span>
+      <div class="meta-line">Résultat : RCE www-data (injection via la recherche)</div>
     </li>
     <!-- Ajouter une entrée par nouveau service traité, dans l'ordre chronologique -->
   </ul>

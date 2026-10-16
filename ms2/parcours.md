@@ -216,14 +216,6 @@ rpcinfo -p 172.28.128.5
 Révèle tous les services RPC dynamiques (mountd, nlockmgr, status) et leurs ports réels —
 c'est ce qui a permis d'identifier les 4 ports hauts "unknown" du scan `-p-`.
 
-## 20. 🟡 SSH / Telnet — bruteforce (ports 22/23) · *Transverse*
-
-**Compétence :** bruteforce de credentials, en clôture du parcours une fois les comptes
-probables identifiés via les autres services (SMTP VRFY, fichiers de conf trouvés via NFS...).
-
-`hydra`/`msfconsole` (`scanner/ssh/ssh_login`, `scanner/telnet/telnet_login`) — Telnet
-transmet tout en clair, bon rappel pour sniffer avec `tcpdump`/Wireshark en parallèle.
-
 ---
 
 ## Ressources complémentaires

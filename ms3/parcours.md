@@ -27,8 +27,7 @@ SSH : `vagrant` / `vagrant` (si configuré) ou console directe.
 Méthodologie générale : **reconnaissance → énumération → exploitation → post-exploitation.**
 
 > Comme pour MS1, seulement **13 services réels** confirmés sur cette VM Linux (scan `-p-`
-> complet + recoupement de plusieurs scans, certains ports étant intermittents). Complété
-> avec des compétences transverses pour arriver à 20 étapes.
+> complet + recoupement de plusieurs scans, certains ports étant intermittents).
 
 ---
 
@@ -154,66 +153,6 @@ que de conclure "fermé = rien à voir".
 **Compétence :** même exercice que l'étape 11, deuxième occurrence pour ancrer le réflexe.
 
 Même méthode de rescan périodique qu'à l'étape 11.
-
-## 13. 🔴 SSH — bruteforce (port 22) · *Transverse*
-
-**Compétence :** bruteforce ciblé, OpenSSH 6.6.1p1 (bien plus récent que MS1/MS2 — tester si
-les mêmes wordlists/techniques restent efficaces sur une version moins ancienne).
-
-`hydra`/`scanner/ssh/ssh_login` avec une wordlist construite à partir des infos trouvées
-ailleurs (étape 14).
-
-## 14. 🔴 Pivot de credentials · *Transverse*
-
-**Compétence :** réutiliser un mot de passe trouvé sur un service (Samba, MySQL, l'appli
-Ruby) pour en tester d'autres.
-
-## 15. 🔴 Post-exploitation / élévation de privilèges · *Transverse*
-
-**Compétence :** une fois un shell obtenu (`www-data` via ProFTPD...), chercher à monter en
-privilèges.
-
-`sudo -l`, `find / -perm -4000`, credentials en clair, cron jobs, kernel exploit si la
-version (`uname -a`) le permet.
-
-## 16. 🔴 Reconnaissance complète des ports · *Transverse*
-
-**Compétence :** le réflexe qu'on vient d'appliquer pour construire ce parcours — plusieurs
-scans `-p-` à des moments différents ont donné des résultats différents (VM encore en train
-de stabiliser ses services après boot).
-
-```bash
-nmap -p- -sV -T4 --min-rate 500 172.28.128.3
-```
-Toujours laisser le temps à une VM lourde de finir son démarrage avant de conclure sur son
-inventaire de services — recommencer le scan si le premier semble incomplet.
-
-## 17. 🔴 Comparaison Jetty vs Tomcat · *Transverse*
-
-**Compétence :** comparer deux serveurs d'applications Java (Jetty ici, Tomcat sur
-MS1/MS2) — techniques de déploiement de WAR similaires mais pas identiques.
-
-Qu'est-ce qui change dans l'interface d'admin et la méthode de déploiement entre les deux ?
-
-## 18. 🔴 Comparaison UnrealIRCd SSL vs clair · *Transverse*
-
-**Compétence :** même backdoor (CVE-2010-2075) exploitée sur MS2 en clair (6667) et ici en
-SSL (6697) — qu'est-ce qui change dans la configuration du module Metasploit ?
-
-## 19. 🔴 Construction de wordlist ciblée · *Transverse*
-
-**Compétence :** fabriquer une wordlist spécifique à la cible à partir des infos glanées
-(énumération Samba, bannières, hostname `METASPLOITABLE3-UB1404`).
-
-Alimente l'étape 13 (bruteforce SSH).
-
-## 20. 🔴 Carnet de bord comparatif inter-VM · *Transverse*
-
-**Compétence :** tenir à jour une comparaison des trois VM du labo (MS1/MS2/MS3) pour le
-même type de service — versions, configs, comportements différents pour une CVE identique.
-
-Exemple déjà documenté : `distccd` (MS1 restrictif vs MS2 ouvert), UnrealIRCd (MS2 clair vs
-MS3 SSL).
 
 ---
 

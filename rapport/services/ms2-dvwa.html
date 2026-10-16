@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DVWA — injection de commande — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">DVWA — injection de commande</h1>
+    <h2 class="doc-subtitle">Entrée utilisateur passée au shell sans filtrage → exécution de commande (RCE)</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>DVWA (application web) — port <code class="mono">80</code>, <code>/dvwa/</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 2 — <code class="mono">192.168.56.101</code></td></tr>
+      <tr><td class="label">Classe</td><td>Injection de commande (OWASP — <em>Command Injection</em>)</td></tr>
+      <tr><td class="label">Résultat</td><td><strong>RCE www-data</strong> via la page <em>Command Execution</em></td></tr>
+      <tr><td class="label">Testé par</td><td>ZANNOU Josaphat</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification / accès</h2>
+  <p>DVWA (Damn Vulnerable Web Application) est une application volontairement vulnérable,
+  listée sur la page d'accueil du serveur. On s'y connecte avec les identifiants par défaut
+  <strong><code>admin:password</code></strong>. Sa page <em>Command Execution</em> propose de
+  « pinger » une adresse IP : l'entrée est passée telle quelle à un <code>shell_exec(
+  "ping -c 4 $ip")</code> côté serveur, sans filtrage au niveau de sécurité <strong>low</strong>.</p>
+
+  <figure class="capture" id="cap-login">
+    <img src="../images/ms2-dvwa/01-login.png" alt="Connexion à DVWA avec admin:password">
+    <figcaption>
+      <strong class="idx">1.</strong>
+      <span class="desc">Connexion à DVWA avec les identifiants par défaut
+      <code>admin:password</code> ; la page d'accueil confirme la session (lien Logout).</span>
+      <span class="fname">images/ms2-dvwa/01-login.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Démarche d'exploitation — injection de commande</h2>
+  <p>Niveau de sécurité réglé sur <strong>low</strong> (<code>PHPIDS: disabled</code>). Le
+  formulaire a un champ <code>ip</code> ; on y injecte une commande à la suite de l'IP avec le
+  séparateur <code>;</code> :</p>
+
+  <pre class="terminal">Champ « ping » : 127.0.0.1;id;uname -a;hostname
+
+Résultat affiché sous le formulaire :
+PING 127.0.0.1 (127.0.0.1) 56(84) bytes of data.
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux
+metasploitable</pre>
+
+  <blockquote class="evidence">
+    Le <code>ping</code> s'exécute, puis la commande injectée (<code>id;uname -a;hostname</code>)
+    s'exécute à la suite &mdash; exécution de commande arbitraire côté serveur, en tant que
+    <code>www-data</code>.
+  </blockquote>
+
+  <p><strong class="field">Détail technique —</strong> le bouton d'envoi du formulaire
+  s'appelle <code>submit</code> (minuscule) : côté serveur le code teste
+  <code>isset($_POST['submit'])</code>. Envoyer <code>Submit</code> (majuscule) ne déclenche
+  pas le traitement et renvoie le formulaire vide.</p>
+
+  <figure class="capture" id="cap-rce">
+    <img src="../images/ms2-dvwa/02-command-injection.png" alt="Injection 127.0.0.1;id affichant uid=33 www-data">
+    <figcaption>
+      <strong class="idx">2.</strong>
+      <span class="desc">Page <em>Command Execution</em> (sécurité low) : l'entrée
+      <code>127.0.0.1;id</code> affiche <code>uid=33(www-data)</code> sous le formulaire —
+      preuve de l'injection de commande.</span>
+      <span class="fname">images/ms2-dvwa/02-command-injection.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Preuve d'accès obtenu</h2>
+  <p>La réponse de la page contient <code>uid=33(www-data)</code> : la commande injectée
+  s'exécute avec les droits du serveur web. À partir de là, on peut enchaîner vers un reverse
+  shell interactif ou chercher une élévation de privilèges.</p>
+
+  <h2 class="section">4. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Ne jamais concaténer une entrée utilisateur dans une commande shell ; utiliser des
+      API sûres et <code>escapeshellarg()</code>/<code>escapeshellcmd()</code>.</li>
+      <li>Valider strictement le format attendu (ici une adresse IP) par liste blanche /
+      expression régulière.</li>
+      <li>Appliquer le principe du moindre privilège au compte du serveur web et isoler
+      l'application.</li>
+      <li>DVWA est une cible d'entraînement : en production, un tel code ne doit jamais être
+      déployé.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">5. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms2/josa/dvwa.md"><code>ms2/josa/dvwa.md</code></a> (dépôt du labo)</li>
+    <li>OWASP — <em>Command Injection</em>.</li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — DVWA, injection de commande</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

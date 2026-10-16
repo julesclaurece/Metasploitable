@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetBIOS Name Service — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">NetBIOS Name Service</h1>
+    <h2 class="doc-subtitle">Reconnaissance du nom de machine et du domaine avant toute énumération SMB</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>NetBIOS Name Service — port <code class="mono">137/udp</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 1 — <code class="mono">192.168.56.102</code></td></tr>
+      <tr><td class="label">CVE</td><td>— (reconnaissance, pas d'exploitation)</td></tr>
+      <tr><td class="label">Résultat</td><td>Nom de machine et domaine révélés sans toucher SMB</td></tr>
+      <tr><td class="label">Testé par</td><td>ZANNOU Josaphat</td></tr>
+    </table>
+  </header>
+
+  <blockquote class="evidence">
+    <strong>Note réseau.</strong> Cette page utilise le réseau de Josaphat
+    (<code>vboxnet0</code>) : cible <code>192.168.56.102</code>. Côté Jules, le même service est
+    sur <code>172.28.128.4</code>. Étape volontairement rapide : montrer qu'on peut récupérer
+    des informations utiles avant d'entamer l'énumération SMB elle-même
+    (<a href="samba-enum.html">samba-enum.html</a>).
+  </blockquote>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Interrogation NetBIOS directe, sans passer par SMB.</p>
+
+  <pre class="terminal">$ nmblookup -A 192.168.56.102
+Looking up status of 192.168.56.102
+	METASPLOITABLE  <00> -         B <ACTIVE>
+	METASPLOITABLE  <03> -         B <ACTIVE>
+	METASPLOITABLE  <20> -         B <ACTIVE>
+	..__MSBROWSE__. <01> - <GROUP> B <ACTIVE>
+	WORKGROUP       <00> - <GROUP> B <ACTIVE>
+	WORKGROUP       <1d> -         B <ACTIVE>
+	WORKGROUP       <1e> - <GROUP> B <ACTIVE></pre>
+
+  <figure class="capture" id="cap-nmblookup">
+    <img src="../images/ms1-netbios/01-nmblookup.png" alt="Résultat de nmblookup -A">
+    <figcaption>
+      <strong class="idx">1.</strong>
+      <span class="desc"><code>METASPLOITABLE&lt;20&gt;</code> (File Server Service, partage de
+      fichiers actif) et <code>WORKGROUP&lt;00&gt;</code> (nom du domaine).</span>
+      <span class="fname">images/ms1-netbios/01-nmblookup.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Méthode de lecture des codes de service</h2>
+  <p>Pas de CVE ici : chaque entrée associe un nom à un code de suffixe (2 chiffres hex) qui
+  indique le type de service NetBIOS enregistré sous ce nom.</p>
+  <table class="meta">
+    <tr><td class="label"><code>METASPLOITABLE&lt;00&gt;</code></td><td>Workstation Service — nom de la machine</td></tr>
+    <tr><td class="label"><code>METASPLOITABLE&lt;03&gt;</code></td><td>Messenger Service</td></tr>
+    <tr><td class="label"><code>METASPLOITABLE&lt;20&gt;</code></td><td><strong>File Server Service</strong> — le partage SMB est actif</td></tr>
+    <tr><td class="label"><code>WORKGROUP&lt;00&gt;</code></td><td>Nom du groupe de travail</td></tr>
+    <tr><td class="label"><code>WORKGROUP&lt;1d&gt;</code></td><td>Local Master Browser</td></tr>
+    <tr><td class="label"><code>WORKGROUP&lt;1e&gt;</code></td><td>Browser Election Service</td></tr>
+  </table>
+
+  <p>Sans avoir touché SMB, on sait déjà : le <strong>nom de machine</strong>
+  (<code>METASPLOITABLE</code>), le <strong>domaine</strong> (<code>WORKGROUP</code>), et que le
+  <strong>service de partage de fichiers est actif</strong> (<code>&lt;20&gt;</code>) — confirmé
+  ensuite en détail dans <a href="samba-enum.html">samba-enum.html</a>.</p>
+
+  <h2 class="section">3. Démarche d'exploitation</h2>
+  <p>Aucune exploitation sur cette page : le nom de machine et le domaine récupérés ici servent
+  de base pour construire une wordlist de noms d'hôtes/domaines pour une attaque ultérieure
+  (ex. formats d'authentification SMB du type <code>DOMAINE\utilisateur</code>), même si dans ce
+  labo l'énumération d'utilisateurs se fait plus efficacement via RID cycling
+  (<a href="samba-enum.html">samba-enum.html</a>).</p>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p>Pas de shell ici — résultat de reconnaissance pure (nom de machine + domaine).</p>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Désactiver NetBIOS (port 137/udp) si le partage de fichiers Windows/SMB legacy n'est
+      pas nécessaire, ou le restreindre au réseau interne uniquement (pare-feu).</li>
+      <li>Ne pas exposer de nom de machine ou de domaine interne sur un réseau non maîtrisé :
+      cette information facilite la reconnaissance (wordlists, social engineering).</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms1/josa/netbios.md"><code>ms1/josa/netbios.md</code></a> (dépôt du labo)</li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — NETBIOS NAME SERVICE</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

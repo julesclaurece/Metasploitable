@@ -28,10 +28,9 @@ réflexion → tentative manuelle → exploitation → post-exploitation**, un s
 tout noté dans le carnet de bord.
 
 > Seulement **13 ports TCP réels** sur cette VM (confirmé par scan `-p-` complet) — bien
-> moins que MS2/MS3. Pour arriver à 20 étapes d'entraînement utiles, ce parcours descend en
-> dessous du simple numéro de port : plusieurs applis distinctes sur un même port (TikiWiki
-> vs TWiki sur 80), et des compétences transverses (bruteforce, pivot de creds,
-> post-exploitation) qui ne sont pas des "ports" en soi mais des phases à part entière.
+> moins que MS2/MS3. Ce parcours descend parfois en dessous du simple numéro de port :
+> plusieurs applis distinctes sur un même port (TikiWiki vs TWiki sur 80) comptent comme des
+> cibles distinctes.
 
 ---
 
@@ -161,68 +160,6 @@ searchsploit proftpd 1.3.1
 ```
 Bon exercice pour accepter qu'un service **peut ne rien donner** — ne pas s'acharner, noter
 l'hypothèse et passer au suivant (règle du jeu : 1h max avant de laisser tomber).
-
-## 14. 🔴 SSH — bruteforce (port 22) · *Transverse*
-
-**Compétence :** bruteforce ciblé avec une wordlist construite à partir des comptes trouvés
-aux étapes précédentes (SMTP VRFY, NetBIOS, `readme.txt`).
-
-D'abord tester directement `msfadmin:msfadmin` (confirmé fonctionner en SSH par une source
-externe, pas juste en console locale) avant tout bruteforce aveugle. Puis
-`hydra`/`scanner/ssh/ssh_login`. Le `readme.txt` officiel annonce "6 sessions SSH" attendues
-par bruteforce — objectif concret à atteindre.
-
-## 15. 🔴 Telnet — bruteforce (port 23) · *Transverse*
-
-**Compétence :** même logique que SSH, protocole en clair en plus — sniffer avec `tcpdump`
-en parallèle pour voir les identifiants passer.
-
-`scanner/telnet/telnet_login`. "6 sessions Telnet" attendues selon le `readme.txt`.
-
-## 16. 🔴 Pivot de credentials · *Transverse*
-
-**Compétence :** réutiliser un mot de passe trouvé sur un service pour en tester d'autres —
-réflexe constant en pentest réel, les gens réutilisent leurs mots de passe.
-
-Après avoir obtenu un accès MySQL/PostgreSQL/SMB, tester les mêmes identifiants sur
-SSH/Telnet/FTP et vice-versa.
-
-## 17. 🔴 Post-exploitation / élévation de privilèges · *Transverse*
-
-**Compétence :** une fois un shell obtenu (`www-data` via TikiWiki, `daemon` via distcc...),
-chercher à monter en privilèges.
-
-**CVE-2009-1185** (confirmé applicable, source : walkthrough externe spécifique à MS1) :
-élévation de privilèges locale via `udev` sur le kernel 2.6.24 (`uname -a` le confirme) —
-technique spécifique à cette VM, pas générique. En complément : `sudo -l`, recherche de
-binaires SUID (`find / -perm -4000`), credentials en clair dans des fichiers de config.
-
-## 18. 🔴 Reconnaissance complète des ports · *Transverse*
-
-**Compétence :** le réflexe qu'on a nous-mêmes appliqué tardivement sur cette VM — un scan
-top-1000 par défaut a raté `ajp13` (port 8009), trouvé seulement via `nmap -p-`.
-
-```bash
-nmap -p- -sV -T4 172.28.128.4
-```
-Toujours faire ce scan complet **avant** de conclure qu'on a fait le tour d'une cible.
-
-## 19. 🔴 Construction de wordlist ciblée · *Transverse*
-
-**Compétence :** fabriquer une wordlist spécifique à la cible plutôt que d'utiliser
-`rockyou.txt` brut — noms d'utilisateurs/hostnames glanés via NetBIOS, SMTP, bannières de
-service, combinés à des variantes de mots de passe probables.
-
-Alimente directement les étapes 14/15 (bruteforce SSH/Telnet).
-
-## 20. 🔴 Comparaison inter-VM · *Transverse*
-
-**Compétence :** comparer le comportement d'un même service (distcc, ProFTPD, Samba) entre
-MS1/MS2/MS3 pour comprendre ce qui change réellement entre versions/configs plutôt que de
-mémoriser une commande d'exploit par cœur.
-
-Exemple déjà fait : `distccd` bloqué par ACL sur MS1, grand ouvert sur MS2 — même CVE,
-configuration différente (voir `ms1/distcc.md` vs la section distcc de `ms2/parcours.md`).
 
 ---
 

