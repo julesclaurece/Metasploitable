@@ -16,11 +16,17 @@ Format : `NN-description-courte.png`.
 règle est simple et s'applique à n'importe quel service :
 
 - **`NN`** = position de la figure dans la page, dans l'ordre d'apparition (`01`, `02`,
-  `03`...) — doit correspondre exactement au nombre affiché dans `<strong class="idx">` du
-  `<figcaption>`.
+  `03`...) — sert juste à trier les fichiers dans le dossier, lisible d'un coup d'œil.
 - **`description-courte`** = 2-4 mots en minuscules, tirets, qui résument ce que montre
   *cette* capture précise (`recon-nmap`, `searchsploit`, `diagnostic-acl`,
   `exploit-msfconsole`, `session-root`...) — pas une case à cocher dans une liste prédéfinie.
+
+**Numéro de fichier ≠ badge affiché dans le rapport.** Le nom de fichier reste numérique
+(`01`, `02`...), mais le badge visible dans le `<figcaption>` (`<strong class="idx">`) est en
+**lettres** (`a.`, `b.`, `c.`...) — pour ne pas se confondre avec la numérotation des
+sections (`1. Identification`, `2. Méthode...`), qui va aussi de 1 à 6. "Voir capture b" ne
+peut pas être pris pour "section 2", alors que "voir capture 2" le pouvait. Les deux
+numérotations (fichier et badge) sont indépendantes — pas besoin de les faire correspondre.
 
 Exemple réel (`vsftpd.html`, 6 captures) :
 ```

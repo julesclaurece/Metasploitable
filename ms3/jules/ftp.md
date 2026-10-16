@@ -32,6 +32,28 @@ searchsploit proftpd 1.3.5
 ProFTPd 1.3.5 - 'mod_copy' Command Execution (Metasploit)  | linux/remote/37262.rb
 ProFTPd 1.3.5 - 'mod_copy' Remote Command Execution        | linux/remote/36803.py
 ```
+Confirme qu'un exploit existe, mais ces chemins sont ceux d'Exploit-DB, pas un module
+Metasploit utilisable directement. Recherche dans `msfconsole` pour trouver ce module :
+
+```bash
+msfconsole -q -x "search proftpd; exit"
+```
+Plusieurs résultats pour d'autres versions de ProFTPD (1.2-1.3.0, 1.3.2rc3-1.3.3b,
+1.3.3c...) ; un seul correspond à la version 1.3.5 exacte :
+```
+exploit/unix/ftp/proftpd_modcopy_exec  2015-04-22  excellent  Yes  ProFTPD 1.3.5 Mod_Copy Command Execution
+```
+Reste à obtenir la CVE :
+
+```bash
+msfconsole -q -x "info exploit/unix/ftp/proftpd_modcopy_exec; exit"
+```
+```
+References:
+  https://nvd.nist.gov/vuln/detail/CVE-2015-3306
+  https://www.exploit-db.com/exploits/36742
+  http://bugs.proftpd.org/show_bug.cgi?id=4169
+```
 
 **CVE-2015-3306.** Le module `mod_copy` expose les commandes FTP `SITE CPFR`/`SITE CPTO`
 **sans vérifier l'état d'authentification** de la session. N'importe quel client connecté

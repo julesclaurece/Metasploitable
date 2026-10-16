@@ -252,20 +252,14 @@ figure.capture figcaption {
 figure.capture figcaption .idx {
   color: var(--accent);
   font-family: "Courier New", monospace;
+  margin-right: 4px;
 }
 figure.capture figcaption .desc {
   font-family: "Georgia", "Times New Roman", serif;
   font-size: 9.5pt;
   color: var(--ink);
   line-height: 1.4;
-  display: block;
   margin-bottom: 3px;
-}
-figure.capture figcaption .fname {
-  font-family: "Courier New", monospace;
-  font-size: 8pt;
-  color: var(--muted);
-  display: block;
 }
 
 /* Sommaire (index.html) */

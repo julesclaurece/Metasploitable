@@ -21,10 +21,27 @@ Le script NSE ne confirme rien de concluant par lui-même — juste `3632/tcp op
 🖥 Kali :
 ```bash
 searchsploit distcc
+```
+```
+DistCC Daemon - Command Execution (Metasploit) | multiple/remote/9915.rb
+```
+Confirme qu'un exploit existe, mais ne donne ni CVE ni chemin de module Metasploit
+utilisable. Recherche dans `msfconsole` pour trouver ce chemin :
+
+```bash
+msfconsole -q -x "search distcc; exit"
+```
+```
+#  Full Name                      Disclosure Date  Rank       Check  Name
+-  ---------                      ---------------  ----       -----  ----
+0  exploit/unix/misc/distcc_exec  2002-02-01       excellent  Yes    DistCC Daemon Command Execution
+```
+Un seul résultat : `exploit/unix/misc/distcc_exec`. Reste à obtenir la CVE :
+
+```bash
 msfconsole -q -x "info exploit/unix/misc/distcc_exec; exit"
 ```
-La CVE (`CVE-2004-2687`) est dans la sortie `info`, section `References` — pas dans
-`searchsploit`, qui ne donne que le nom du module (`multiple/remote/9915.rb`).
+La CVE (`CVE-2004-2687`) est dans la sortie `info`, section `References`.
 
 `distccd` exécute toute commande de compilation reçue **sans authentification** ; seul
 garde-fou : une whitelist IP (`--allow`) fixée au démarrage du démon.

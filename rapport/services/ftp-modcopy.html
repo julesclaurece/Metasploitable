@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ProFTPD mod_copy RCE — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">ProFTPD 1.3.5 — mod_copy RCE</h1>
+    <h2 class="doc-subtitle">Copie de fichier côté serveur sans authentification, menant à l'exécution de code via le webroot</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>FTP (ProFTPD) — port <code class="mono">21</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 3 — <code class="mono">172.28.128.3</code></td></tr>
+      <tr><td class="label">CVE</td><td><a href="https://nvd.nist.gov/vuln/detail/CVE-2015-3306">CVE-2015-3306</a></td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Shell utilisateur <code>www-data</code></strong></td></tr>
+      <tr><td class="label">Testé par</td><td>KAGBAHINTO Jules</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Le scan de reconnaissance identifie ProFTPD en version 1.3.5. Un test de login anonyme
+  est fermé (<code>530 Login incorrect.</code>) — piste éliminée (capture a).</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ftp-modcopy/01-recon-nmap.png" alt="Résultat du scan nmap sur le port 21">
+    <figcaption>
+      <strong class="idx">a.</strong>
+      <span class="desc">Résultat de <code>nmap -sC -sV -p 21</code> : ProFTPD 1.3.5
+      identifié. Les scripts NSE anonymes ne remontent rien de notable.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
+  <p><code>searchsploit proftpd 1.3.5</code> confirme plusieurs exploits connus, mais ce sont
+  des chemins Exploit-DB, pas un module Metasploit utilisable. <code>search proftpd</code>
+  dans <code>msfconsole</code> remonte plusieurs résultats pour d'autres versions
+  (1.2-1.3.0, 1.3.2rc3-1.3.3b, 1.3.3c...) ; un seul correspond à la version 1.3.5 exacte :
+  <code>exploit/unix/ftp/proftpd_modcopy_exec</code> (capture b).</p>
+
+  <p><code>info</code> sur ce module donne, dans sa section <code>References</code>,
+  <strong>CVE-2015-3306</strong> (capture c). Le module <code>mod_copy</code> expose les
+  commandes FTP <code>SITE CPFR</code>/<code>SITE CPTO</code>
+  <strong>sans vérifier l'état d'authentification</strong> de la session — n'importe quel
+  client connecté peut faire copier un fichier lisible par le process FTP vers n'importe
+  quel chemin accessible en écriture par ce même process, y compris le webroot Apache, d'où
+  RCE possible via un payload PHP.</p>
+
+  <figure class="capture" id="cap-recherche">
+    <img src="../images/ftp-modcopy/02-recherche-module.png" alt="Résultat de searchsploit puis search proftpd dans msfconsole">
+    <figcaption>
+      <strong class="idx">b.</strong>
+      <span class="desc"><code>searchsploit proftpd 1.3.5</code> puis
+      <code>search proftpd</code> : le chemin exact du module
+      (<code>exploit/unix/ftp/proftpd_modcopy_exec</code>), distinct des autres résultats
+      qui visent d'autres versions.</span>
+    </figcaption>
+  </figure>
+
+  <figure class="capture" id="cap-info-cve">
+    <img src="../images/ftp-modcopy/03-info-cve.png" alt="Résultat de info sur le module, section References">
+    <figcaption>
+      <strong class="idx">c.</strong>
+      <span class="desc">Résultat de <code>info</code> sur le module : la section
+      <code>References</code> donne <strong>CVE-2015-3306</strong>.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation</h2>
+  <p><strong class="field">Preuve de concept manuelle —</strong> sur une connexion FTP
+  fraîche, sans aucun login, les commandes <code>SITE CPFR</code>/<code>SITE CPTO</code>
+  passent directement : copie de <code>/etc/passwd</code> vers un fichier temporaire,
+  confirmant la faille avant tout outillage (capture d).</p>
+
+  <figure class="capture" id="cap-poc">
+    <img src="../images/ftp-modcopy/04-poc-manuelle.png" alt="Preuve de concept manuelle via FTP brut">
+    <figcaption>
+      <strong class="idx">d.</strong>
+      <span class="desc"><code>SITE CPFR /etc/passwd</code> puis
+      <code>SITE CPTO ...</code> sur une connexion FTP non authentifiée : <code>250 Copy
+      successful</code> confirme la copie sans login.</span>
+    </figcaption>
+  </figure>
+
+  <p><strong class="field">Exploiter —</strong> démarche interactive dans
+  <code>msfconsole</code> : chargement du module et configuration des options, en particulier
+  <code>SITEPATH</code> qui doit pointer sur le vrai webroot
+  (<code>/var/www/html</code>, pas la valeur par défaut du module qui échoue) (capture e),
+  puis <code>exploit -z</code> déclenche l'attaque (capture f).</p>
+
+  <figure class="capture" id="cap-config">
+    <img src="../images/ftp-modcopy/05-exploit-config.png" alt="Configuration du module avant lancement">
+    <figcaption>
+      <strong class="idx">e.</strong>
+      <span class="desc">Chargement du module et configuration des options, dont
+      <code>SITEPATH /var/www/html</code>.</span>
+    </figcaption>
+  </figure>
+
+  <figure class="capture" id="cap-launch">
+    <img src="../images/ftp-modcopy/06-exploit-launch.png" alt="Déclenchement de exploit -z">
+    <figcaption>
+      <strong class="idx">f.</strong>
+      <span class="desc"><code>exploit -z</code> en action : dépôt et exécution d'un payload
+      PHP via le webroot, ouverture de la session.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p><code>sessions -i 1 -c id</code> confirme l'accès sous <code>www-data</code>, le compte
+  d'exécution d'Apache/PHP.</p>
+
+  <blockquote class="evidence">
+    Le message final du module (<code>Exploit aborted ... Failure executing payload</code> /
+    <code>no session was created</code>) est <strong>trompeur</strong> — la session s'ouvre
+    bien juste avant, le module échoue seulement sur son nettoyage HTTP après coup. Toujours
+    vérifier avec <code>sessions -l</code> plutôt que de se fier au message de fin.
+  </blockquote>
+
+  <figure class="capture" id="cap-preuve">
+    <img src="../images/ftp-modcopy/07-preuve-acces.png" alt="Preuve d'accès shell www-data">
+    <figcaption>
+      <strong class="idx">g.</strong>
+      <span class="desc">Sortie de <code>sessions -i 1 -c id</code> confirmant l'accès sous
+      <code>www-data</code> (<code>uid=33(www-data) gid=33(www-data)</code>).</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Mettre à jour ProFTPD vers une version postérieure corrigeant CVE-2015-3306, ou
+      désactiver le module <code>mod_copy</code> s'il n'est pas utilisé.</li>
+      <li>Vérifier que toutes les commandes <code>SITE</code> exposées par les modules
+      ProFTPD respectent bien l'état d'authentification de la session, pas seulement
+      <code>mod_copy</code>.</li>
+      <li>Appliquer des permissions strictes sur le webroot : le compte FTP ne devrait
+      jamais avoir les droits d'écriture nécessaires pour y déposer un fichier exécutable
+      par le serveur web.</li>
+      <li>Séparer les comptes de service (FTP, Apache/PHP) pour qu'une compromission de l'un
+      ne donne pas directement accès en écriture aux fichiers servis par l'autre.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms3/jules/ftp.md"><code>ms3/jules/ftp.md</code></a> (dépôt du labo)</li>
+    <li>CVE-2015-3306 : <a href="https://nvd.nist.gov/vuln/detail/CVE-2015-3306">nvd.nist.gov/vuln/detail/CVE-2015-3306</a></li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — PROFTPD MOD_COPY RCE</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

@@ -56,11 +56,13 @@ Chaque page doit contenir, dans cet ordre, ces 6 sections (calquées sur
    reconnaissance (`nmap`) avec explication de ce qui a été cherché
 2. **Méthode d'identification de la CVE et du module** — pas juste "contexte" : montrer la
    vraie recherche (`searchsploit`, puis `search <produit>` dans `msfconsole` pour le chemin
-   du module, puis `info <module>` pour la CVE), **chaque commande avec sa vraie sortie**,
-   puis l'explication du mécanisme de la faille (voir `regle_writup.md` §1 — aucune info ne
-   sort de nulle part)
+   du module, puis `info <module>` pour la CVE), **chaque commande avec sa vraie sortie —
+   via la capture d'écran qui l'accompagne, pas recopiée en `<pre>` dans le texte** (voir
+   §4 "Ton et style" sur ce point précis), puis l'explication du mécanisme de la faille (voir
+   `regle_writup.md` §1 — aucune info ne sort de nulle part)
 3. **Démarche d'exploitation** — captures + commandes utilisées, avec explication de ce que
-   fait chaque commande (pas juste un copier-coller de terminal)
+   fait chaque commande (le nom de la commande en `<code>` inline dans le texte suffit, la
+   capture juste en dessous montre son exécution complète)
 4. **Preuve d'accès obtenu** — capture claire du résultat (ex. `id` montrant `uid=0`)
 5. **Remédiation** — **obligatoire**, souvent oublié : comment corriger cette faille en
    situation réelle (mise à jour, changement de config, désactivation du service...)
@@ -74,6 +76,11 @@ Chaque page doit contenir, dans cet ordre, ces 6 sections (calquées sur
   perso).
 - **Expliquer, pas juste montrer.** Une capture d'écran sans explication de ce qu'elle
   prouve n'a pas sa place dans le rapport.
+- **Ne jamais dupliquer une capture en texte.** Si une commande et son résultat sont déjà
+  montrés par une `<figure class="capture">`, ne pas les reproduire dans un `<pre
+  class="terminal">` juste avant — le texte autour **renvoie** à la capture ("capture 2
+  ci-dessous", "voir capture 4") plutôt que de la recopier. `<pre class="terminal">` ne sert
+  que pour un extrait **sans** capture correspondante (rare).
 - Pas de jargon non défini à la première occurrence (ex. la première fois que "RCE"
   apparaît dans une page, l'écrire en toutes lettres : "exécution de code à distance
   (RCE)").

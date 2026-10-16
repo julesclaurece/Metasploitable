@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DistCC Daemon RCE — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">DistCC Daemon — RCE</h1>
+    <h2 class="doc-subtitle">Exécution de commande à distance sans authentification, avec diagnostic d'une ACL réseau bloquante</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>distccd — port <code class="mono">3632</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 1 — <code class="mono">172.28.128.4</code></td></tr>
+      <tr><td class="label">CVE</td><td><a href="https://nvd.nist.gov/vuln/detail/CVE-2004-2687">CVE-2004-2687</a></td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Shell utilisateur <code>daemon</code></strong> (pas root direct — voir Remédiation)</td></tr>
+      <tr><td class="label">Testé par</td><td>KAGBAHINTO Jules</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Le scan de reconnaissance identifie un démon <code>distccd</code> en écoute sur le port
+  3632. Le script NSE dédié (<code>distcc-cve2004-2687</code>) confirme directement la
+  vulnérabilité et exécute même <code>id</code> pour le prouver (capture a) — <strong>ce
+  résultat suppose que le réseau d'où on scanne est déjà autorisé par l'ACL du démon</strong>.
+  Lors du tout premier contact avec ce service, ce n'était pas le cas (voir section 3) : le
+  script ne remontait alors rien de concluant, le temps de diagnostiquer et corriger cette
+  ACL.</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/distcc/01-recon-nmap.png" alt="Résultat du scan nmap sur le port 3632">
+    <figcaption>
+      <strong class="idx">a.</strong>
+      <span class="desc">Résultat de <code>nmap -sC -sV -p 3632</code> et du script NSE
+      <code>distcc-cve2004-2687</code> : confirmation directe de la vulnérabilité (le script
+      exécute <code>id</code> et affiche <code>uid=1(daemon)</code>), le réseau de scan étant
+      déjà whitelisté par l'ACL corrigée en amont.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
+  <p><code>searchsploit distcc</code> confirme qu'un exploit connu existe, puis
+  <code>search distcc</code> dans <code>msfconsole</code> donne le chemin exact du module :
+  <code>exploit/unix/misc/distcc_exec</code> (capture b).</p>
+
+  <p><code>info</code> sur ce module donne, dans sa section <code>References</code>,
+  <strong>CVE-2004-2687</strong> (capture c). <code>distccd</code> (démon de compilation
+  distribuée) exécute, par conception, toute commande de compilation reçue
+  <strong>sans authentification</strong> — le seul garde-fou prévu est une liste blanche
+  d'IP/réseaux autorisés (<code>--allow</code>), fixée au démarrage du démon.</p>
+
+  <figure class="capture" id="cap-recherche">
+    <img src="../images/distcc/02-recherche-module.png" alt="Résultat de searchsploit puis search distcc dans msfconsole">
+    <figcaption>
+      <strong class="idx">b.</strong>
+      <span class="desc"><code>searchsploit distcc</code> puis <code>search distcc</code> :
+      le chemin exact du module (<code>exploit/unix/misc/distcc_exec</code>).</span>
+    </figcaption>
+  </figure>
+
+  <figure class="capture" id="cap-info-cve">
+    <img src="../images/distcc/03-info-cve.png" alt="Résultat de info sur le module, section References">
+    <figcaption>
+      <strong class="idx">c.</strong>
+      <span class="desc">Résultat de <code>info</code> sur le module : la section
+      <code>References</code> donne <strong>CVE-2004-2687</strong>.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation</h2>
+  <p><strong class="field">Sonder le protocole à la main —</strong> avant tout outillage, un
+  test manuel du protocole distcc (handshake minimal <code>DIST00000001</code>) permet de
+  vérifier si l'ACL du démon bloque notre réseau d'attaque, sans construire un payload
+  complet (capture d).</p>
+
+  <figure class="capture" id="cap-sonde">
+    <img src="../images/distcc/04-sonder-protocole.png" alt="Sonde manuelle du protocole distcc">
+    <figcaption>
+      <strong class="idx">d.</strong>
+      <span class="desc">Connexion TCP brute au port 3632 avec un handshake minimal — un
+      <code>RST</code> à ce stade indiquerait une ACL bloquante côté serveur.</span>
+    </figcaption>
+  </figure>
+
+  <p>Le build par défaut de cette VM autorise seulement <code>192.168.0.0/16</code>,
+  <code>10.0.0.0/8</code> et <code>172.16.0.0/16</code> — notre réseau de labo
+  (<code>172.28.128.0/24</code>) n'y figure pas. <strong class="field">Correctif
+  (console VM)</strong> : la liste <code>--allow</code> est codée en dur dans
+  <code>/etc/init.d/distcc</code> (pas dans <code>/etc/default/distcc</code> comme son nom
+  le suggérerait) — édition du script, puis relance forcée du démon, puisque
+  <code>restart</code>/<code>stop</code> sont des no-op volontaires dans ce build
+  (capture e).</p>
+
+  <figure class="capture" id="cap-acl">
+    <img src="../images/distcc/05-corriger-acl.png" alt="Correction de l'ACL distcc sur la console VM">
+    <figcaption>
+      <strong class="idx">e.</strong>
+      <span class="desc">Ajout de notre sous-réseau à la liste <code>--allow</code> dans le
+      script d'init, puis relance forcée du démon (<code>pkill</code> + <code>start</code>,
+      pas <code>restart</code>).</span>
+    </figcaption>
+  </figure>
+
+  <p><strong class="field">Exploiter —</strong> une fois l'ACL corrigée, démarche interactive
+  dans <code>msfconsole</code> : <code>use</code> du module puis configuration des options
+  (<code>RHOSTS</code>, <code>PAYLOAD</code>, <code>LHOST</code>, <code>LPORT</code>)
+  (capture f), puis <code>exploit -z</code> déclenche l'attaque (capture g).</p>
+
+  <figure class="capture" id="cap-config">
+    <img src="../images/distcc/06-exploit-config.png" alt="Configuration du module avant lancement">
+    <figcaption>
+      <strong class="idx">f.</strong>
+      <span class="desc">Chargement du module et configuration des options avant le
+      déclenchement de l'exploit.</span>
+    </figcaption>
+  </figure>
+
+  <figure class="capture" id="cap-launch">
+    <img src="../images/distcc/07-exploit-launch.png" alt="Déclenchement de exploit -z">
+    <figcaption>
+      <strong class="idx">g.</strong>
+      <span class="desc"><code>exploit -z</code> en action : ouverture de la session shell
+      sur la cible.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p><code>sessions -i 1 -c id</code> confirme l'accès ; l'utilisateur obtenu est
+  <code>daemon</code> (uid=1), conforme au <code>--user daemon</code> passé au démarrage du
+  service — pas root, contrairement à la backdoor vsftpd.</p>
+
+  <figure class="capture" id="cap-preuve">
+    <img src="../images/distcc/08-preuve-acces.png" alt="Preuve d'accès shell daemon">
+    <figcaption>
+      <strong class="idx">h.</strong>
+      <span class="desc">Sortie de <code>sessions -i 1 -c id</code> confirmant l'accès sous
+      l'utilisateur <code>daemon</code> (<code>uid=1(daemon) gid=1(daemon)</code>).</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Ne jamais exposer <code>distccd</code> sur un réseau non totalement maîtrisé — ce
+      service est conçu pour un usage interne (ferme de compilation), pas pour être
+      accessible depuis l'extérieur.</li>
+      <li>Si l'exposition est nécessaire, restreindre l'ACL <code>--allow</code> au strict
+      sous-réseau des machines de compilation autorisées, jamais à des plages RFC1918
+      larges par défaut.</li>
+      <li>Préférer un tunnel SSH ou un VPN pour la distribution de compilation à distance,
+      plutôt que d'exposer le protocole distcc directement.</li>
+      <li>Même si l'accès obtenu ici n'est que <code>daemon</code> (pas root), ce compte
+      reste un point d'entrée exploitable pour une élévation de privilèges ultérieure —
+      corriger la cause racine (exposition du service) plutôt que de compter sur le
+      cloisonnement des droits.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms1/jules/distcc.md"><code>ms1/jules/distcc.md</code></a> (dépôt du labo)</li>
+    <li>CVE-2004-2687 : <a href="https://nvd.nist.gov/vuln/detail/CVE-2004-2687">nvd.nist.gov/vuln/detail/CVE-2004-2687</a></li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — DISTCC DAEMON RCE</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>
