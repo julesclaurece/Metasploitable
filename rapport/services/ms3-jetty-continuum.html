@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apache Continuum — RCE — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">Apache Continuum — Arbitrary Command Execution</h1>
+    <h2 class="doc-subtitle">Exécution de commande arbitraire via un serveur d'intégration continue tournant avec les droits root</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>HTTP (Jetty, Apache Continuum 1.4.2) — port <code class="mono">8080</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 3 — <code class="mono">172.28.128.3</code></td></tr>
+      <tr><td class="label">CVE</td><td><a href="https://nvd.nist.gov/vuln/detail/CVE-2016-15057">CVE-2016-15057</a></td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Accès root</strong> (session Meterpreter complète)</td></tr>
+      <tr><td class="label">Testé par</td><td>KAGBAHINTO Jules</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>La racine du serveur Jetty renvoie une 404 sans rien révéler, et un <code>gobuster</code>
+  générique ne trouve rien. <strong>Astuce qui a débloqué la recherche</strong> : Jetty liste
+  lui-même ses contextes connus dans le corps de sa page d'erreur 404 — pas besoin de deviner
+  à l'aveugle (capture a).</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms3-jetty-continuum/01-recon-404.png" alt="Page 404 Jetty révélant le contexte Continuum">
+    <figcaption>
+      <strong class="idx">a.</strong>
+      <span class="desc">La page 404 de Jetty liste <code>/continuum</code> et sa version
+      exacte : <strong>Apache Continuum 1.4.2</strong>.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
+  <p><code>searchsploit continuum</code> puis <code>search continuum</code> dans
+  <code>msfconsole</code> trouvent <code>exploit/linux/http/apache_continuum_cmd_exec</code>.
+  <code>info</code> confirme <strong>CVE-2016-15057</strong> (capture b).</p>
+
+  <blockquote class="evidence">
+    <strong>Mécanisme.</strong> Une fonctionnalité de configuration des outils de build dans
+    Continuum permet d'injecter des commandes système, exécutées par le serveur lors d'une
+    build, sans validation suffisante des entrées — exécution de commande arbitraire avec
+    les droits du processus Continuum.
+  </blockquote>
+
+  <figure class="capture" id="cap-recherche">
+    <img src="../images/ms3-jetty-continuum/02-recherche-module.png" alt="searchsploit, search et info du module apache_continuum_cmd_exec">
+    <figcaption>
+      <strong class="idx">b.</strong>
+      <span class="desc">Module trouvé puis <strong>CVE-2016-15057</strong> confirmée via
+      <code>info</code>.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation</h2>
+  <p>Exploitation directe via <code>msfconsole</code>, sans obstacle rencontré —
+  contrairement à Samba et Drupal sur cette même cible (capture c).</p>
+
+  <figure class="capture" id="cap-exploit">
+    <img src="../images/ms3-jetty-continuum/03-exploit-session.png" alt="Exploitation réussie, session root ouverte">
+    <figcaption>
+      <strong class="idx">c.</strong>
+      <span class="desc">Injection du CmdStager, envoi du stage Meterpreter, session ouverte
+      directement en root.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p><code>sessions -i 1 -c id</code> confirme <strong>root direct</strong> — pas une
+  élévation en deux temps, le processus Continuum tournait déjà en root sur cette install
+  (capture d).</p>
+
+  <figure class="capture" id="cap-preuve">
+    <img src="../images/ms3-jetty-continuum/04-preuve-root.png" alt="Preuve d'accès root complet">
+    <figcaption>
+      <strong class="idx">d.</strong>
+      <span class="desc"><code>uid=0(root) gid=0(root)</code> sur
+      <code>metasploitable3-ub1404</code>.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Mettre à jour Apache Continuum au-delà de 1.4.2, ou migrer vers un outil de CI
+      maintenu (Continuum est un projet Apache retiré depuis plusieurs années).</li>
+      <li>Ne <strong>jamais</strong> faire tourner un serveur de build/CI avec les droits
+      root — c'est la cause de gravité de cette CVE, pas juste la faille elle-même.</li>
+      <li>Restreindre l'accès réseau à l'interface Continuum (VPN, pare-feu,
+      authentification) — elle n'a aucune raison d'être exposée publiquement.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms3/jules/jetty-continuum.md"><code>ms3/jules/jetty-continuum.md</code></a> (dépôt du labo)</li>
+    <li>CVE-2016-15057 : <a href="https://nvd.nist.gov/vuln/detail/CVE-2016-15057">nvd.nist.gov/vuln/detail/CVE-2016-15057</a></li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — APACHE CONTINUUM RCE</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

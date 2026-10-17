@@ -47,6 +47,71 @@
       <div class="meta-line">Résultat : accès utilisateur www-data</div>
     </li>
     <li>
+      <a href="services/ms3-samba-enum.html">Samba — Énumération sans authentification</a>
+      <span class="badge badge-vm3">MS3 · ports 139/445</span>
+      <div class="meta-line">Résultat : 2 comptes + 3 partages + politique de mot de passe, sans identifiants</div>
+    </li>
+    <li>
+      <a href="services/ms3-samba-exploit.html">Samba — is_known_pipename() RCE (CVE-2017-7494)</a>
+      <span class="badge badge-vm3">MS3 · port 445</span>
+      <div class="meta-line">Résultat : bloqué — vulnérable mais pas de partage inscriptible anonyme</div>
+    </li>
+    <li>
+      <a href="services/ms3-drupal.html">Drupal 7.5 — Drupalgeddon2 (CVE-2018-7600)</a>
+      <span class="badge badge-vm3">MS3 · port 80</span>
+      <div class="meta-line">Résultat : bloqué — vulnérabilité confirmée, cause diagnostiquée précisément</div>
+    </li>
+    <li>
+      <a href="services/ms3-payroll-sqli.html">Payroll App — Injection SQL</a>
+      <span class="badge badge-vm3">MS3 · port 80</span>
+      <div class="meta-line">Résultat : 15 employés exfiltrés (salaires inclus), bypass d'authentification</div>
+    </li>
+    <li>
+      <a href="services/ms3-chat-xss.html">Chat App — XSS stockée</a>
+      <span class="badge badge-vm3">MS3 · port 80</span>
+      <div class="meta-line">Résultat : XSS confirmée, vol de session possible (cookie sans HttpOnly)</div>
+    </li>
+    <li>
+      <a href="services/ms3-mysql-phpmyadmin.html">MySQL / phpMyAdmin — Identifiants faibles</a>
+      <span class="badge badge-vm3">MS3 · ports 3306/80</span>
+      <div class="meta-line">Résultat : bloqué — root sans mot de passe confirmé, mais deux protections indépendantes</div>
+    </li>
+    <li>
+      <a href="services/ms3-jetty-continuum.html">Apache Continuum — Arbitrary Command Execution (CVE-2016-15057)</a>
+      <span class="badge badge-vm3">MS3 · port 8080</span>
+      <div class="meta-line">Résultat : accès root direct</div>
+    </li>
+    <li>
+      <a href="services/ms3-unrealircd.html">UnrealIRCd 3.2.8.1 — Backdoor (CVE-2010-2075)</a>
+      <span class="badge badge-vm3">MS3 · port 6697</span>
+      <div class="meta-line">Résultat : shell boba_fett à la main — module Metasploit en échec, cause diagnostiquée</div>
+    </li>
+    <li>
+      <a href="services/ms3-webrick-rails-render.html">WEBrick / Rails — Dynamic Render (CVE-2016-0752)</a>
+      <span class="badge badge-vm3">MS3 · port 3500</span>
+      <div class="meta-line">Résultat : faille confirmée, rendu du fichier contrôlé obtenu — RCE bloqué par un problème de permissions</div>
+    </li>
+    <li>
+      <a href="services/ms3-port-3000-diagnostic.html">Diagnostic — Port 3000 (service mal exposé)</a>
+      <span class="badge badge-vm3">MS3 · port 3000</span>
+      <div class="meta-line">Résultat : service vivant, lié à 127.0.0.1 uniquement — pas un crash-loop</div>
+    </li>
+    <li>
+      <a href="services/ms3-port-8181-diagnostic.html">Diagnostic — Port 8181 (rien provisionné)</a>
+      <span class="badge badge-vm3">MS3 · port 8181</span>
+      <div class="meta-line">Résultat : aucun service, aucune trace sur le disque</div>
+    </li>
+    <li>
+      <a href="services/ms3-cups.html">CUPS 1.7.2 — Interface d'administration d'imprimante</a>
+      <span class="badge badge-vm3">MS3 · port 631</span>
+      <div class="meta-line">Résultat : bloqué — vecteurs non authentifiés fermés, cause diagnostiquée</div>
+    </li>
+    <li>
+      <a href="services/ms3-rpcbind.html">rpcbind — Énumération RPC</a>
+      <span class="badge badge-vm3">MS3 · port 111</span>
+      <div class="meta-line">Résultat : service actif et bien configuré, filtrage réseau confirmé par élimination</div>
+    </li>
+    <li>
       <a href="services/ms1-tomcat.html">Tomcat Manager — Déploiement WAR (CVE-2009-3548)</a>
       <span class="badge badge-vm1">MS1 · port 8180</span>
       <div class="meta-line">Résultat : shell tomcat55 (identifiants manager par défaut)</div>

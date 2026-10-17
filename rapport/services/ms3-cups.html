@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CUPS 1.7.2 — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">CUPS 1.7.2 — Interface d'administration d'imprimante</h1>
+    <h2 class="doc-subtitle">Service correctement identifié et versionné, aucun vecteur non authentifié exploitable trouvé sur cette install</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>IPP/HTTP (CUPS 1.7.2) — port <code class="mono">631</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 3 — <code class="mono">172.28.128.3</code></td></tr>
+      <tr><td class="label">CVE</td><td>CVE-2014-6271, CVE-2012-5519, CVE-2015-1158 (examinées, aucune exploitée)</td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Bloqué</strong> — vecteurs non authentifiés fermés, cause diagnostiquée</td></tr>
+      <tr><td class="label">Testé par</td><td>KAGBAHINTO Jules</td></tr>
+    </table>
+  </header>
+
+  <blockquote class="evidence">
+    <strong>Résultat non abouti, documenté volontairement.</strong> Comme pour Samba,
+    Drupal et MySQL/phpMyAdmin sur cette même cible, aucun accès obtenu ici — mais chaque
+    piste a été creusée jusqu'à une cause précise plutôt que laissée comme un simple
+    "ça ne marche pas".
+  </blockquote>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Interface web CUPS standard, accessible en lecture sans authentification (accueil,
+  imprimantes, aide). <code>nmap</code> signale en plus la méthode <code>PUT</code> comme
+  potentiellement risquée — une piste à vérifier (capture a).</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms3-cups/01-recon-nmap.png" alt="Scan nmap révélant CUPS 1.7 et la méthode PUT">
+    <figcaption>
+      <strong class="idx">a.</strong>
+      <span class="desc"><strong>CUPS 1.7.2</strong> confirmée, méthode <code>PUT</code>
+      signalée comme potentiellement risquée.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Méthode d'identification des CVE et des modules</h2>
+  <p><code>searchsploit cups</code> et <code>search cups</code> dans <code>msfconsole</code>
+  remontent plusieurs pistes ; trois examinées en détail (capture b) :</p>
+  <ul>
+    <li><code>exploit/multi/http/cups_bash_env_exec</code> (Shellshock, CVE-2014-6271) :
+    exige des identifiants CUPS valides en option du module — authentifié par design.</li>
+    <li><code>post/multi/escalate/cups_root_file_read</code> (CVE-2012-5519) : cible
+    explicitement CUPS <strong>&lt; 1.6.2</strong> et le groupe <code>lpadmin</code> — notre
+    version est postérieure au correctif.</li>
+    <li><code>linux/remote/41233.py</code> (CVE-2015-1158, confusion de type IPP) : cible
+    CUPS <strong>&lt; 2.0.3</strong> (1.7.2 concernée), mais exige la compilation d'une
+    bibliothèque malveillante et une course à la concurrence mémoire — complexité jugée
+    disproportionnée pour ce point du parcours.</li>
+  </ul>
+
+  <figure class="capture" id="cap-recherche">
+    <img src="../images/ms3-cups/02-recherche-cve.png" alt="Recherche des CVE et modules CUPS pertinents">
+    <figcaption>
+      <strong class="idx">b.</strong>
+      <span class="desc">Trois pistes retenues, chacune avec une raison précise de ne pas
+      être exploitable simplement ici.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation et diagnostic</h2>
+  <p>Test manuel du vecteur <code>PUT</code> signalé par <code>nmap</code> — technique
+  historique (CVE-2008-5183) d'écrasement de <code>cupsd.conf</code> sans authentification
+  sur les très anciennes versions de CUPS (capture c).</p>
+
+  <figure class="capture" id="cap-put">
+    <img src="../images/ms3-cups/03-put-bloque.png" alt="PUT sur cupsd.conf bloqué par exigence HTTPS puis authentification">
+    <figcaption>
+      <strong class="idx">c.</strong>
+      <span class="desc"><code>426 Upgrade Required</code> (HTTP simple refusé) puis
+      <code>401 Unauthorized</code> (HTTPS accepté mais authentification exigée) — vecteur
+      correctement fermé sur cette version.</span>
+    </figcaption>
+  </figure>
+
+  <p>Sweep rapide d'identifiants faibles/par défaut (<code>root</code>, <code>admin</code>,
+  <code>lp</code> avec mots de passe évidents) contre cette authentification : tous rejetés,
+  401 systématique. Écriture arbitraire dans le webroot également testée et refusée
+  (<code>403 Forbidden</code>).</p>
+
+  <h2 class="section">4. Conclusion</h2>
+  <p>Service correctement identifié et versionné, CVE pertinentes recherchées et comprises,
+  mais aucun vecteur non authentifié exploitable trouvé sur cette install précise : le
+  chemin historique (<code>PUT</code> sur la config) est bloqué par l'exigence
+  HTTPS + authentification, et les CVE applicables exigent soit des identifiants valides,
+  soit un exploit natif jugé disproportionné pour ce point du parcours.</p>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Mettre à jour CUPS au-delà de 2.0.3 pour corriger CVE-2015-1158, même non exploitée
+      ici — la présence d'une version vulnérable reste un risque en soi.</li>
+      <li>Restreindre l'accès réseau au port 631 aux réseaux de gestion — une interface
+      d'administration d'imprimante n'a aucune raison d'être exposée aux clients.</li>
+      <li>Corriger Shellshock (CVE-2014-6271) au niveau système si ce n'est pas déjà fait —
+      faille de <code>bash</code>, pas de CUPS lui-même.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms3/jules/cups.md"><code>ms3/jules/cups.md</code></a> (dépôt du labo)</li>
+    <li>CVE-2015-1158 : <a href="https://nvd.nist.gov/vuln/detail/CVE-2015-1158">nvd.nist.gov/vuln/detail/CVE-2015-1158</a></li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — CUPS 1.7.2 (BLOQUÉ)</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

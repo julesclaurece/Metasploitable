@@ -29,7 +29,7 @@
   est fermé (<code>530 Login incorrect.</code>) — piste éliminée (capture a).</p>
 
   <figure class="capture" id="cap-recon">
-    <img src="../images/ftp-modcopy/01-recon-nmap.png" alt="Résultat du scan nmap sur le port 21">
+    <img src="../images/ms3-ftp-modcopy/01-recon-nmap.png" alt="Résultat du scan nmap sur le port 21">
     <figcaption>
       <strong class="idx">a.</strong>
       <span class="desc">Résultat de <code>nmap -sC -sV -p 21</code> : ProFTPD 1.3.5
@@ -53,7 +53,7 @@
   RCE possible via un payload PHP.</p>
 
   <figure class="capture" id="cap-recherche">
-    <img src="../images/ftp-modcopy/02-recherche-module.png" alt="Résultat de searchsploit puis search proftpd dans msfconsole">
+    <img src="../images/ms3-ftp-modcopy/02-recherche-module.png" alt="Résultat de searchsploit puis search proftpd dans msfconsole">
     <figcaption>
       <strong class="idx">b.</strong>
       <span class="desc"><code>searchsploit proftpd 1.3.5</code> puis
@@ -64,7 +64,7 @@
   </figure>
 
   <figure class="capture" id="cap-info-cve">
-    <img src="../images/ftp-modcopy/03-info-cve.png" alt="Résultat de info sur le module, section References">
+    <img src="../images/ms3-ftp-modcopy/03-info-cve.png" alt="Résultat de info sur le module, section References">
     <figcaption>
       <strong class="idx">c.</strong>
       <span class="desc">Résultat de <code>info</code> sur le module : la section
@@ -79,7 +79,7 @@
   confirmant la faille avant tout outillage (capture d).</p>
 
   <figure class="capture" id="cap-poc">
-    <img src="../images/ftp-modcopy/04-poc-manuelle.png" alt="Preuve de concept manuelle via FTP brut">
+    <img src="../images/ms3-ftp-modcopy/04-poc-manuelle.png" alt="Preuve de concept manuelle via FTP brut">
     <figcaption>
       <strong class="idx">d.</strong>
       <span class="desc"><code>SITE CPFR /etc/passwd</code> puis
@@ -95,7 +95,7 @@
   puis <code>exploit -z</code> déclenche l'attaque (capture f).</p>
 
   <figure class="capture" id="cap-config">
-    <img src="../images/ftp-modcopy/05-exploit-config.png" alt="Configuration du module avant lancement">
+    <img src="../images/ms3-ftp-modcopy/05-exploit-config.png" alt="Configuration du module avant lancement">
     <figcaption>
       <strong class="idx">e.</strong>
       <span class="desc">Chargement du module et configuration des options, dont
@@ -104,7 +104,7 @@
   </figure>
 
   <figure class="capture" id="cap-launch">
-    <img src="../images/ftp-modcopy/06-exploit-launch.png" alt="Déclenchement de exploit -z">
+    <img src="../images/ms3-ftp-modcopy/06-exploit-launch.png" alt="Déclenchement de exploit -z">
     <figcaption>
       <strong class="idx">f.</strong>
       <span class="desc"><code>exploit -z</code> en action : dépôt et exécution d'un payload
@@ -124,7 +124,7 @@
   </blockquote>
 
   <figure class="capture" id="cap-preuve">
-    <img src="../images/ftp-modcopy/07-preuve-acces.png" alt="Preuve d'accès shell www-data">
+    <img src="../images/ms3-ftp-modcopy/07-preuve-acces.png" alt="Preuve d'accès shell www-data">
     <figcaption>
       <strong class="idx">g.</strong>
       <span class="desc">Sortie de <code>sessions -i 1 -c id</code> confirmant l'accès sous

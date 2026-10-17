@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Samba — Énumération — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">Samba — Énumération sans authentification</h1>
+    <h2 class="doc-subtitle">Partages, comptes système et politique de mot de passe récupérés via session SMB anonyme, avant toute tentative d'exploitation</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>SMB (Samba) — ports <code class="mono">139</code> / <code class="mono">445</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 3 — <code class="mono">172.28.128.3</code></td></tr>
+      <tr><td class="label">CVE</td><td>— (énumération, pas d'exploitation sur cette page)</td></tr>
+      <tr><td class="label">Résultat</td><td><strong>2 comptes système</strong> + 3 partages + politique de mot de passe, sans authentification</td></tr>
+      <tr><td class="label">Testé par</td><td>KAGBAHINTO Jules</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Le scan de reconnaissance identifie un Samba <code>smbd 3.X–4.X</code> (workgroup
+  <code>WORKGROUP</code>) sur les ports 139 et 445. Version imprécise à ce stade — l'objectif
+  de cette page n'est pas de l'affiner mais de voir ce que le service révèle sans
+  authentification.</p>
+
+  <h2 class="section">2. Méthode d'énumération</h2>
+  <p>Pas de CVE sur cette page — l'objectif est l'énumération, pas l'exploitation d'une faille
+  précise. Première étape : lister les partages sans authentification
+  (<code>smbclient -L //172.28.128.3/ -N</code>, capture a). Trois partages exposés :
+  <code>print$</code>, <code>public</code> et <code>IPC$</code> — ce dernier révèle au passage
+  le hostname exact du serveur (<code>metasploitable3-ub1404</code>) dans son commentaire.</p>
+
+  <p>Tentative de lecture du partage <code>public</code> (son commentaire "WWW" suggère un
+  lien avec le service web) : <code>tree connect failed: NT_STATUS_ACCESS_DENIED</code> —
+  visible dans la liste, mais pas accessible en anonyme.</p>
+
+  <figure class="capture" id="cap-shares">
+    <img src="../images/ms3-samba-enum/01-smbclient-shares.png" alt="Liste des partages SMB en anonyme">
+    <figcaption>
+      <strong class="idx">a.</strong>
+      <span class="desc">Les trois partages (<code>print$</code>, <code>public</code>,
+      <code>IPC$</code>) listés sans identifiants, puis l'échec d'accès en lecture sur
+      <code>public</code>.</span>
+    </figcaption>
+  </figure>
+
+  <blockquote class="evidence">
+    <strong>Mécanisme.</strong> La session SMB <em>null</em> (utilisateur et mot de passe
+    vides) est acceptée par le serveur pour les opérations de <em>listing</em> — une
+    mauvaise configuration courante, pas une faille de code. C'est cette même session
+    anonyme qui permet ensuite l'énumération RID (comptes) ci-dessous, sans jamais fournir
+    de mot de passe.
+  </blockquote>
+
+  <p><code>enum4linux -a 172.28.128.3</code> confirme la session null
+  (<code>Server ... allows sessions using username '', password ''</code>) et remonte
+  <strong>deux comptes système</strong> : <code>nobody</code> et <code>chewbacca</code> (RID
+  1000 — premier compte "humain" après les comptes système par défaut, probablement ajouté
+  intentionnellement pour ce labo). La politique de mot de passe est également récupérable
+  sans authentification : complexité désactivée, longueur minimale de 5 caractères
+  (capture b).</p>
+
+  <figure class="capture" id="cap-enum">
+    <img src="../images/ms3-samba-enum/02-enum4linux-users.png" alt="Comptes et politique de mot de passe via enum4linux">
+    <figcaption>
+      <strong class="idx">b.</strong>
+      <span class="desc">Compte <code>chewbacca</code> trouvé via RID cycling, et politique
+      de mot de passe (<code>Password Complexity: Disabled</code>,
+      <code>Minimum Password Length: 5</code>).</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation</h2>
+  <p>Cette page couvre uniquement l'énumération. Le compte <code>chewbacca</code> et la
+  politique de mot de passe faible (5 caractères, pas de complexité requise) donnent une
+  piste de bruteforce réaliste pour une étape ultérieure — pas de CVE à exploiter ici, juste
+  une mauvaise configuration à exploiter par la suite.</p>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p>« Accès » ici signifie : lecture de métadonnées système (partages, comptes, politique de
+  mot de passe) sans aucune authentification valide — pas de shell à ce stade.</p>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Désactiver l'accès anonyme/null session sur Samba (<code>restrict anonymous = 2</code>
+      et <code>map to guest = never</code> dans <code>smb.conf</code>).</li>
+      <li>Restreindre le partage <code>public</code> et masquer <code>IPC$</code> du listing
+      anonyme — le commentaire du service ne devrait pas exposer le hostname interne.</li>
+      <li>Renforcer la politique de mot de passe (longueur minimale et complexité) — 5
+      caractères sans complexité est bruteforçable en un temps raisonnable.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms3/jules/samba-enum.md"><code>ms3/jules/samba-enum.md</code></a> (dépôt du labo)</li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — SAMBA ÉNUMÉRATION</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

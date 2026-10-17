@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drupal 7.5 — Drupalgeddon2 — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">Drupal 7.5 — Drupalgeddon2 Forms API Injection</h1>
+    <h2 class="doc-subtitle">Vulnérabilité confirmée et point d'entrée vulnérable atteint, exploitation bloquée par une erreur PHP diagnostiquée précisément</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>HTTP (Drupal 7.5) — port <code class="mono">80</code>, <code class="mono">/drupal/</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 3 — <code class="mono">172.28.128.3</code></td></tr>
+      <tr><td class="label">CVE</td><td><a href="https://nvd.nist.gov/vuln/detail/CVE-2018-7600">CVE-2018-7600</a> (« Drupalgeddon2 »)</td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Bloqué</strong> — vulnérabilité confirmée, cause du blocage diagnostiquée précisément</td></tr>
+      <tr><td class="label">Testé par</td><td>KAGBAHINTO Jules</td></tr>
+    </table>
+  </header>
+
+  <blockquote class="evidence">
+    <strong>Résultat non abouti, documenté volontairement.</strong> Comme pour Samba sur
+    cette même cible, aucun accès final obtenu ici — mais la cause du blocage a été tracée
+    jusqu'à une ligne de code précise, pas laissée comme un simple "ça ne marche pas".
+  </blockquote>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Le script NSE de reconnaissance révèle directement le contenu du webroot (listing de
+  répertoire Apache activé) : quatre applis distinctes exposées (<code>chat/</code>,
+  <code>drupal/</code>, <code>payroll_app.php</code>, <code>phpmyadmin/</code>). Le fichier
+  <code>CHANGELOG.txt</code> de Drupal confirme la version exacte : <strong>Drupal
+  7.5</strong> (2011), largement antérieure à la version corrigée 7.58 (capture a).</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms3-drupal/01-recon-version.png" alt="Listing webroot et CHANGELOG.txt Drupal">
+    <figcaption>
+      <strong class="idx">a.</strong>
+      <span class="desc">Listing du webroot (4 applis) et <code>Drupal 7.5, 2011-07-27</code>
+      dans <code>CHANGELOG.txt</code>.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
+  <p><code>searchsploit drupal 7</code> puis <code>search drupal 7</code> dans
+  <code>msfconsole</code> trouvent le module
+  <code>exploit/unix/webapp/drupal_drupalgeddon2</code>. <code>info</code> dessus confirme
+  <strong>CVE-2018-7600</strong> (capture b).</p>
+
+  <blockquote class="evidence">
+    <strong>Mécanisme.</strong> La Forms API de Drupal construit les formulaires sous forme
+    de tableaux PHP imbriqués, où des clés spéciales (<code>#post_render</code>,
+    <code>#markup</code>...) contrôlent le rendu. La faille permet d'injecter ces clés
+    spéciales dans une requête utilisateur normale : Drupal traite alors
+    <code>#post_render</code> comme un <strong>callback PHP à exécuter</strong> sur
+    <code>#markup</code>, sans vérifier que ce callback vient bien du code légitime —
+    exécution de code arbitraire.
+  </blockquote>
+
+  <figure class="capture" id="cap-recherche">
+    <img src="../images/ms3-drupal/02-recherche-module.png" alt="searchsploit, search et info du module drupal_drupalgeddon2">
+    <figcaption>
+      <strong class="idx">b.</strong>
+      <span class="desc">Chemin du module trouvé puis <strong>CVE-2018-7600</strong> confirmée
+      via <code>info</code>.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation et diagnostic</h2>
+  <p>Premier essai via Metasploit : <code>LHOST</code> auto-réglé sur une IP hors du réseau
+  du labo (piège rencontré, corrigé en le forçant explicitement). Une fois corrigé, toujours
+  aucune session malgré 3 techniques d'injection PHP tentées en interne par le module
+  (<code>printf</code>, <code>assert</code>/<code>eval</code>, <code>passthru</code>), ni
+  avec un payload de commande directe sans connexion retour (capture c).</p>
+
+  <figure class="capture" id="cap-msf">
+    <img src="../images/ms3-drupal/03-exploit-msf-echec.png" alt="Tentatives Metasploit sans session créée">
+    <figcaption>
+      <strong class="idx">c.</strong>
+      <span class="desc">Plusieurs techniques d'injection tentées par le module, toutes
+      silencieuses : <code>Exploit completed, but no session was created</code>.</span>
+    </figcaption>
+  </figure>
+
+  <p>Plutôt que de deviner pourquoi, lecture du <strong>code source du module</strong>
+  (déjà installé localement) pour comprendre exactement les deux requêtes HTTP qu'il envoie
+  (POST sur <code>user/password</code> avec les clés Forms API injectées, puis POST sur
+  <code>file/ajax/...</code> avec le <code>form_build_id</code> récupéré), puis reproduction
+  manuelle exacte avec <code>curl</code> (capture d).</p>
+
+  <figure class="capture" id="cap-manuel">
+    <img src="../images/ms3-drupal/04-curl-manuel.png" alt="Reproduction manuelle des deux requêtes HTTP avec curl">
+    <figcaption>
+      <strong class="idx">d.</strong>
+      <span class="desc">Étape 1 (récupération du <code>form_build_id</code>) réussie ;
+      étape 2 déclenche une erreur PHP précise : <code>Undefined index: #value in
+      file_ajax_upload()</code>.</span>
+    </figcaption>
+  </figure>
+
+  <p><strong>Diagnostic précis :</strong> la requête atteint bien la fonction vulnérable
+  (<code>file_ajax_upload()</code>, confirmée par l'erreur PHP elle-même citant le code
+  source officiel de Drupal) — le chemin de code vulnérable est correctement déclenché. Mais
+  le tableau de formulaire reconstruit entre les deux requêtes (via le cache identifié par
+  <code>form_build_id</code>) ne contient pas la clé <code>#value</code> attendue à ce
+  stade — l'injection n'a pas "survécu" à la sérialisation du cache de formulaire sur cette
+  install précise.</p>
+
+  <h2 class="section">4. Conclusion</h2>
+  <p>Vulnérabilité confirmée à tous les niveaux (version, CVE, point d'entrée vulnérable
+  atteint), mais exploitation non aboutie avec la technique standard — cause tracée jusqu'à
+  la ligne de code exacte qui échoue, pas un simple constat d'échec.</p>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Mettre à jour Drupal vers 7.58 ou supérieur — patch officiel
+      SA-CORE-2018-002.</li>
+      <li>Valider strictement les clés de tableau autorisées dans les données utilisateur
+      avant fusion dans un tableau de rendu Forms API — cause racine de la CVE.</li>
+      <li>Surveiller les requêtes vers <code>user/password</code> et <code>file/ajax/*</code>
+      contenant des paramètres de formulaire inhabituels.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms3/jules/drupal.md"><code>ms3/jules/drupal.md</code></a> (dépôt du labo)</li>
+    <li>CVE-2018-7600 : <a href="https://nvd.nist.gov/vuln/detail/CVE-2018-7600">nvd.nist.gov/vuln/detail/CVE-2018-7600</a></li>
+    <li>Avis officiel Drupal : <a href="https://www.drupal.org/sa-core-2018-002">drupal.org/sa-core-2018-002</a></li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — DRUPAL 7.5 DRUPALGEDDON2 (BLOQUÉ)</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

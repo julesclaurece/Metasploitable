@@ -34,10 +34,9 @@
   <figure class="capture" id="cap-login">
     <img src="../images/ms2-dvwa/01-login.png" alt="Connexion à DVWA avec admin:password">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc">Connexion à DVWA avec les identifiants par défaut
       <code>admin:password</code> ; la page d'accueil confirme la session (lien Logout).</span>
-      <span class="fname">images/ms2-dvwa/01-login.png</span>
     </figcaption>
   </figure>
 
@@ -45,14 +44,6 @@
   <p>Niveau de sécurité réglé sur <strong>low</strong> (<code>PHPIDS: disabled</code>). Le
   formulaire a un champ <code>ip</code> ; on y injecte une commande à la suite de l'IP avec le
   séparateur <code>;</code> :</p>
-
-  <pre class="terminal">Champ « ping » : 127.0.0.1;id;uname -a;hostname
-
-Résultat affiché sous le formulaire :
-PING 127.0.0.1 (127.0.0.1) 56(84) bytes of data.
-uid=33(www-data) gid=33(www-data) groups=33(www-data)
-Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux
-metasploitable</pre>
 
   <blockquote class="evidence">
     Le <code>ping</code> s'exécute, puis la commande injectée (<code>id;uname -a;hostname</code>)
@@ -68,11 +59,10 @@ metasploitable</pre>
   <figure class="capture" id="cap-rce">
     <img src="../images/ms2-dvwa/02-command-injection.png" alt="Injection 127.0.0.1;id affichant uid=33 www-data">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc">Page <em>Command Execution</em> (sécurité low) : l'entrée
       <code>127.0.0.1;id</code> affiche <code>uid=33(www-data)</code> sous le formulaire —
       preuve de l'injection de commande.</span>
-      <span class="fname">images/ms2-dvwa/02-command-injection.png</span>
     </figcaption>
   </figure>
 

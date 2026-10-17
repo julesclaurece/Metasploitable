@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WEBrick / Rails Dynamic Render — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">WEBrick / Rails — Dynamic Render File Upload</h1>
+    <h2 class="doc-subtitle">Appli Ruby maison vulnérable à un rendu de template contrôlé par l'utilisateur — exploitation reproduite jusqu'au rendu, bloquée par un problème de permissions distinct de la faille</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>HTTP (WEBrick 1.3.1, Rails 4.2.4) — port <code class="mono">3500</code>, route <code class="mono">/readme</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 3 — <code class="mono">172.28.128.3</code></td></tr>
+      <tr><td class="label">CVE</td><td><a href="https://nvd.nist.gov/vuln/detail/CVE-2016-0752">CVE-2016-0752</a></td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Vulnérabilité confirmée</strong>, rendu du fichier contrôlé obtenu — exécution de code bloquée par un problème de permissions filesystem indépendant</td></tr>
+      <tr><td class="label">Testé par</td><td>KAGBAHINTO Jules</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Le port est trouvé fermé au premier scan — le service n'avait jamais été démarré dans
+  cette instance de VM (pas de job <code>upstart</code> associé). Relancé manuellement via
+  l'accès shell déjà obtenu sur la cible (backdoor UnrealIRCd, voir page dédiée), après avoir
+  contourné un fichier de verrou (<code>pid</code>) périmé (capture a).</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms3-webrick-rails-render/01-recon-relance.png" alt="Port fermé puis service relancé manuellement">
+    <figcaption>
+      <strong class="idx">a.</strong>
+      <span class="desc">Port fermé au départ, puis <code>WEBrick::HTTPServer#start ...
+      port=3500</code> après relance manuelle.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
+  <p>Pas de produit connu à chercher directement — appli Rails maison. La lecture du code
+  source (accès shell déjà disponible) révèle le motif exact qui a guidé la recherche :
+  <code>render template</code> où <code>template</code> provient de <code>params[:os]</code>
+  sans aucune validation (capture b).</p>
+
+  <blockquote class="evidence">
+    <strong>Mécanisme.</strong> Rails (jusqu'à 5.0.0.beta1.1) traite toute chaîne passée à
+    <code>render</code> contenant un <code>/</code> comme un nom de template à rechercher dans
+    <code>app/views/</code>. Ce lookup reste sandboxé dans ce répertoire, mais le sandbox est
+    contournable par traversée (<code>../</code>). Combiné à la fuite prévisible du chemin
+    d'un fichier temporaire uploadé (Rails affiche ce chemin dans ses pages d'erreur très
+    verbeuses en développement), un attaquant peut faire exécuter comme template ERB un
+    fichier qu'il contrôle entièrement.
+  </blockquote>
+
+  <figure class="capture" id="cap-recherche">
+    <img src="../images/ms3-webrick-rails-render/02-recherche-module.png" alt="Code source vulnérable et CVE-2016-0752 confirmée via info">
+    <figcaption>
+      <strong class="idx">b.</strong>
+      <span class="desc"><code>render template</code> avec entrée utilisateur non validée,
+      puis <strong>CVE-2016-0752</strong> confirmée via <code>info</code>.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation</h2>
+  <p>Deux étapes. D'abord, un upload multipart contenant du code ERB déclenche une erreur de
+  template manquant qui révèle le chemin exact du fichier temporaire créé sur le serveur
+  (capture c). Vérifié sur la cible que ce fichier reste présent après la réponse — pas de
+  nettoyage automatique avec cette version de Rack.</p>
+
+  <figure class="capture" id="cap-fuite">
+    <img src="../images/ms3-webrick-rails-render/03-fuite-tempfile.png" alt="Fuite du chemin du fichier temporaire via une erreur de template">
+    <figcaption>
+      <strong class="idx">c.</strong>
+      <span class="desc">Le message d'erreur révèle <code>Tempfile:/tmp/RackMultipart...</code>
+      — le chemin exact du fichier uploadé contrôlé par l'attaquant.</span>
+    </figcaption>
+  </figure>
+
+  <p>Ensuite, passer ce chemin en traversée relative (<code>../../../../tmp/...</code>, pour
+  remonter de <code>app/views/</code> jusqu'à la racine) au lieu d'un chemin absolu fait
+  basculer l'erreur de <code>ActionView::MissingTemplate</code> à <code>Errno::EACCES</code> :
+  la preuve que le fichier a été localisé et que son rendu a commencé (capture d).</p>
+
+  <figure class="capture" id="cap-traversee">
+    <img src="../images/ms3-webrick-rails-render/04-traversee-render.png" alt="Changement d'erreur confirmant que le rendu du fichier contrôlé a commencé">
+    <figcaption>
+      <strong class="idx">d.</strong>
+      <span class="desc">L'erreur change de nature : le fichier attaquant a été trouvé, le
+      blocage vient ensuite du <em>layout</em> qui tente d'écrire dans un répertoire de cache
+      sans les droits nécessaires — sans rapport avec la faille elle-même.</span>
+    </figcaption>
+  </figure>
+
+  <p>Le module Metasploit officiel va plus loin dans l'automatisation (upload + tentative de
+  téléchargement du stage) mais échoue pour la même raison sous-jacente (capture e).</p>
+
+  <figure class="capture" id="cap-metasploit">
+    <img src="../images/ms3-webrick-rails-render/05-metasploit-echec.png" alt="Le module Metasploit officiel échoue également à créer une session">
+    <figcaption>
+      <strong class="idx">e.</strong>
+      <span class="desc"><code>exploit/multi/http/rails_dynamic_render_code_exec</code> :
+      même blocage, aucune session créée.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p>Pas d'exécution de code confirmée dans cette session. La preuve obtenue est partielle
+  mais sans ambiguïté : le changement d'erreur (capture d) démontre que le fichier contrôlé
+  par l'attaquant a été localisé et que son traitement comme template a commencé — l'étape
+  qui suit (rendu effectif du contenu ERB injecté) est bloquée par un problème de permissions
+  filesystem propre à cette instance (droits <code>chewbacca</code> vs <code>boba_fett</code>
+  sur le cache des assets), pas par la faille elle-même.</p>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Mettre à jour Rails au-delà de la version patchée (5.0.0.beta1.1), qui corrige la
+      normalisation des arguments de <code>render</code> à la source.</li>
+      <li>Ne jamais passer une chaîne contrôlée par l'utilisateur directement à
+      <code>render</code> — utiliser une liste blanche explicite de valeurs autorisées.</li>
+      <li>Restreindre les permissions d'écriture sur les répertoires de cache applicatifs à
+      l'utilisateur qui exécute réellement le service.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms3/jules/webrick-rails-render.md"><code>ms3/jules/webrick-rails-render.md</code></a> (dépôt du labo)</li>
+    <li>CVE-2016-0752 : <a href="https://nvd.nist.gov/vuln/detail/CVE-2016-0752">nvd.nist.gov/vuln/detail/CVE-2016-0752</a></li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — WEBRICK / RAILS DYNAMIC RENDER</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

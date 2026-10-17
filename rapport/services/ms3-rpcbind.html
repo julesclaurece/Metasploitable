@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rpcbind — Énumération — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">rpcbind — Énumération RPC</h1>
+    <h2 class="doc-subtitle">Service confirmé actif et correctement lié, blocage isolé au niveau réseau par élimination méthodique</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>RPC (<code>rpcbind</code>) — port <code class="mono">111</code> (TCP/UDP)</td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 3 — <code class="mono">172.28.128.3</code></td></tr>
+      <tr><td class="label">CVE</td><td>— (exercice d'énumération réseau)</td></tr>
+      <tr><td class="label">Résultat</td><td>Service vivant et bien configuré, filtrage réseau confirmé par élimination</td></tr>
+      <tr><td class="label">Testé par</td><td>KAGBAHINTO Jules</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p><code>nmap</code> renvoie un résultat ambigu des deux côtés : <code>filtered</code> en
+  TCP, <code>open|filtered</code> en UDP — l'empreinte typique d'un pare-feu qui ignore les
+  paquets silencieusement, sans jamais répondre ni par un accusé de réception ni par un rejet
+  actif. <code>rpcinfo -p</code> ne se termine jamais depuis l'extérieur (capture a).</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms3-rpcbind/01-recon-filtered.png" alt="Résultats ambigus filtered/open|filtered sur le port 111">
+    <figcaption>
+      <strong class="idx">a.</strong>
+      <span class="desc">TCP <code>filtered</code>, UDP <code>open|filtered</code> —
+      impossible de trancher depuis l'extérieur seul.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Démarche de diagnostic</h2>
+  <p>Vérification directe via l'accès shell déjà obtenu sur cette cible (backdoor
+  UnrealIRCd, voir page dédiée) plutôt que de deviner : <code>rpcbind</code> tourne bien, en
+  root, et écoute correctement sur <code>*:111</code> en TCP comme en UDP — pas de crash, pas
+  de mauvais binding (capture b).</p>
+
+  <figure class="capture" id="cap-diagnostic">
+    <img src="../images/ms3-rpcbind/02-diagnostic-shell.png" alt="rpcbind actif et correctement lié sur toutes les interfaces">
+    <figcaption>
+      <strong class="idx">b.</strong>
+      <span class="desc"><code>rpcbind</code> actif (PID root) et lié sur
+      <code>*:111</code> — le service est sain.</span>
+    </figcaption>
+  </figure>
+
+  <p>Lecture des règles de pare-feu locales tentée pour confirmer la cause exacte
+  (<code>iptables -L -n</code>) : refusée, le compte <code>boba_fett</code> obtenu via la
+  backdoor n'a pas les privilèges root nécessaires. La conclusion repose donc sur
+  l'élimination méthodique des deux autres hypothèses (service absent, service mal lié),
+  toutes deux écartées par les observations directes ci-dessus.</p>
+
+  <h2 class="section">3. Conclusion</h2>
+  <p>Service vivant et correctement configuré — le blocage est réseau, pas applicatif. Ce
+  comportement intermittent (signalé dans <code>ms3/parcours.md</code>) est cohérent avec une
+  règle de filtrage qui laisse occasionnellement passer un paquet isolé sans jamais permettre
+  un échange RPC complet.</p>
+
+  <h2 class="section">4. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Si ce filtrage est intentionnel, le documenter clairement — <code>rpcbind</code>
+      n'a de toute façon aucune raison d'être exposé hors d'un réseau de confiance
+      NFS/NIS.</li>
+      <li>Si non intentionnel, vérifier la cohérence de la règle de pare-feu avec l'usage
+      réel prévu pour ce service dans le labo.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">5. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms3/jules/rpcbind.md"><code>ms3/jules/rpcbind.md</code></a> (dépôt du labo)</li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — RPCBIND ÉNUMÉRATION</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

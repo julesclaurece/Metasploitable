@@ -65,13 +65,14 @@ d'exploit.
 enum4linux -a 172.28.128.3
 smbclient -L //172.28.128.3/ -N
 ```
-Partages, utilisateurs, politique de mots de passe.
+Partages, utilisateurs, politique de mots de passe. **Fait, voir `samba-enum.md`.**
 
 ## 3. 🟡 Samba — exploitation (port 445) · *Moyen*
 
 **Compétence :** exploiter la version trouvée à l'étape 2, pas avant.
 
 `searchsploit samba` pour la version exacte (3.X–4.X annoncé par nmap, à affiner).
+**Fait (bloqué, cause diagnostiquée), voir `samba-exploit.md`.**
 
 ## 4. 🟡 Web — Apache (port 80) · *Moyen*
 
@@ -82,6 +83,8 @@ gobuster dir -u http://172.28.128.3 -w /usr/share/wordlists/dirb/common.txt
 ```
 Énumère les répertoires, explore les applis hébergées, cherche les failles classiques
 (injections, upload, identifiants faibles). Burp Suite pour intercepter/modifier.
+**Fait, voir `drupal.md` (bloqué, cause diagnostiquée), `payroll-sqli.md` (succès) et
+`chat-xss.md` (succès).**
 
 ## 5. 🟡 MySQL (port 3306) · *Moyen à fort*
 
@@ -89,13 +92,14 @@ gobuster dir -u http://172.28.128.3 -w /usr/share/wordlists/dirb/common.txt
 
 Banner "unauthorized" — tester identifiants faibles quand même, explorer les bases
 accessibles, voir comment une base compromise peut mener à l'accès système.
+**Fait (bloqué, cause diagnostiquée), voir `mysql-phpmyadmin.md`.**
 
 ## 6. 🔴 Jetty — Java (port 8080) · *Fort*
 
 **Compétence :** chaîne d'exploitation complète + post-exploitation.
 
 Interface d'administration Java. Déployer une charge via la console, obtenir un shell, puis
-**élever les privilèges** jusqu'à root.
+**élever les privilèges** jusqu'à root. **Fait (root direct), voir `jetty-continuum.md`.**
 
 ## 7. 🟡 UnrealIRCd (port 6697) · *Trivial à facile*
 
@@ -104,6 +108,8 @@ famille que MS2, mais ici en SSL (6697 au lieu de 6667).
 
 CVE-2010-2075 : commande précédée de `AB;` exécutée côté serveur. Vérifier si le wrapper SSL
 change la méthode de connexion du module Metasploit (`ssl` à activer dans les options).
+**Fait (exécution manuelle confirmée, module Metasploit en échec diagnostiqué), voir
+`unrealircd.md`.**
 
 ## 8. 🟡 WEBrick Ruby custom (port 3500) · *Moyen*
 
@@ -115,6 +121,8 @@ curl -v http://172.28.128.3:3500/
 ```
 Explorer manuellement, identifier le framework (Sinatra/Rails léger ?), chercher des routes
 non protégées, de la désérialisation Ruby (`Marshal.load`) si l'appli en fait.
+**Fait (CVE-2016-0752 confirmée, bloqué sur un problème de permissions distinct de la
+faille), voir `webrick-rails-render.md`.**
 
 ## 9. 🟢 CUPS (port 631) · *Facile*
 
@@ -126,6 +134,7 @@ curl http://172.28.128.3:631/
 ```
 `searchsploit cups 1.7` — vérifier les CVE connues de cette version (exécution de code via
 filtres de conversion, ou divulgation d'info via l'interface web).
+**Fait (bloqué, cause diagnostiquée), voir `cups.md`.**
 
 ## 10. 🟢 rpcbind — énumération (port 111) · *Facile*
 
@@ -134,6 +143,8 @@ filtres de conversion, ou divulgation d'info via l'interface web).
 ```bash
 rpcinfo -p 172.28.128.3
 ```
+**Fait (service actif confirmé, filtrage réseau diagnostiqué par élimination), voir
+`rpcbind.md`.**
 
 ## 11. 🟡 Services intermittents — port 3000 · *Diagnostic*
 
@@ -146,13 +157,47 @@ for i in 1 2 3 4 5; do nmap -p 3000 172.28.128.3 | grep 3000; sleep 20; done
 ```
 Si le port alterne open/closed sur plusieurs scans espacés, c'est un service qui démarre et
 crashe en boucle — chercher pourquoi (logs si accès shell déjà obtenu par ailleurs) plutôt
-que de conclure "fermé = rien à voir".
+que de conclure "fermé = rien à voir". **Fait (service vivant, lié à 127.0.0.1 uniquement —
+ni fermé ni crash-loopé), voir `port-3000-diagnostic.md`.**
 
 ## 12. 🟡 Services intermittents — port 8181 · *Diagnostic*
 
 **Compétence :** même exercice que l'étape 11, deuxième occurrence pour ancrer le réflexe.
 
-Même méthode de rescan périodique qu'à l'étape 11.
+Même méthode de rescan périodique qu'à l'étape 11. **Fait (aucun service provisionné),
+voir `port-8181-diagnostic.md`.**
+
+---
+
+**Parcours MS3 complet** — les 12 services listés ci-dessus ont tous été traités (succès,
+blocage diagnostiqué, ou absence confirmée). Write-ups dans `ms3/jules/`, pages de rapport
+correspondantes dans `rapport/services/ms3-*.html`.
+
+### ⚠️ Services où l'exploitation n'a PAS abouti (bloqués, cause diagnostiquée)
+
+Pour une vue rapide sans avoir à relire chaque section : ces services ont une vulnérabilité
+**confirmée** (CVE identifiée, point d'entrée vulnérable atteint) mais **aucun accès final
+obtenu** — chaque blocage est documenté avec sa cause exacte, pas laissé comme un simple
+échec constaté.
+
+- **Samba — exploitation** (item 3, port 445) — CVE-2017-7494 confirmée vulnérable, mais pas
+  de partage inscriptible anonyme sur cette install. `samba-exploit.md`.
+- **Drupal 7.5** (item 4, port 80) — CVE-2018-7600 confirmée, point d'entrée atteint, mais le
+  cache de formulaire ne survit pas à l'injection sur cette install. `drupal.md`.
+- **MySQL / phpMyAdmin** (item 5, port 3306/80) — root sans mot de passe confirmé, mais
+  bloqué par deux protections indépendantes (ACL réseau MySQL + `AllowNoPassword` côté
+  phpMyAdmin). `mysql-phpmyadmin.md`.
+- **WEBrick / Rails Dynamic Render** (item 8, port 3500) — CVE-2016-0752 confirmée,
+  technique de traversée reproduite jusqu'au rendu du fichier contrôlé, mais un problème de
+  permissions filesystem (sans rapport avec la faille) empêche l'exécution du code injecté.
+  `webrick-rails-render.md`.
+- **CUPS 1.7.2** (item 9, port 631) — aucun vecteur non authentifié exploitable trouvé ; les
+  CVE applicables exigent des identifiants valides ou un exploit natif jugé disproportionné
+  pour ce point du parcours. `cups.md`.
+
+Les items 10 à 12 (rpcbind, ports 3000/8181) sont des exercices de **diagnostic réseau**,
+pas des tentatives d'exploitation — ils ne comptent pas comme des échecs : chacun conclut
+avec une cause identifiée avec certitude (service mal exposé, absent, ou filtré).
 
 ---
 

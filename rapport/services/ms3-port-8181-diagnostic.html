@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnostic port 8181 — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">Diagnostic — Port 8181 (rien n'est provisionné)</h1>
+    <h2 class="doc-subtitle">Deuxième exercice de diagnostic réseau — conclusion différente du port 3000, toujours fondée sur preuve directe</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>Port <code class="mono">8181</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 3 — <code class="mono">172.28.128.3</code></td></tr>
+      <tr><td class="label">CVE</td><td>— (exercice de diagnostic réseau)</td></tr>
+      <tr><td class="label">Résultat</td><td>Aucun service, aucun processus, aucune trace sur le disque — absence confirmée, pas supposée</td></tr>
+      <tr><td class="label">Testé par</td><td>KAGBAHINTO Jules</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Même protocole que pour le port 3000 (<a href="ms3-port-3000-diagnostic.html">page
+  dédiée</a>) : cinq scans espacés de 20 secondes, aucune alternance observée
+  (capture a).</p>
+
+  <figure class="capture" id="cap-rescan">
+    <img src="../images/ms3-port-8181-diagnostic/01-rescan-periodique.png" alt="Cinq scans successifs montrant un port constamment fermé">
+    <figcaption>
+      <strong class="idx">a.</strong>
+      <span class="desc">Même résultat <code>closed</code> sur 5 cycles, comme pour le
+      port 3000.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Démarche de diagnostic</h2>
+  <p>Avec l'accès shell déjà obtenu sur la cible (backdoor UnrealIRCd), vérification directe
+  plutôt que spéculation : aucun processus en écoute sur ce port, aucun job
+  <code>upstart</code> qui le mentionne, et aucun dossier applicatif sous
+  <code>/opt/</code> qui s'y réfère (capture b) — contrairement au port 3000 où le service
+  <code>sinatra</code> était clairement identifiable.</p>
+
+  <figure class="capture" id="cap-absence">
+    <img src="../images/ms3-port-8181-diagnostic/02-aucune-trace.png" alt="Absence totale de service, processus ou configuration liée au port 8181">
+    <figcaption>
+      <strong class="idx">b.</strong>
+      <span class="desc">Ni <code>ss</code>, ni <code>ps</code>, ni <code>/etc/init/</code>
+      ne mentionnent ce port — et <code>/opt/</code> ne contient aucun dossier
+      correspondant.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Conclusion du diagnostic</h2>
+  <p>Conclusion différente du port 3000 malgré un symptôme externe identique
+  (<code>closed</code> de façon stable) : ici, il n'y a <strong>rien</strong> à démarrer ou
+  reconfigurer — ni processus, ni configuration, ni code applicatif associé. Ce n'est pas un
+  crash-loop (rien à crasher) ni un problème de binding (rien n'écoute nulle part). La
+  mention dans <code>ms3/parcours.md</code> reflète probablement un service Metasploitable 3
+  documenté publiquement mais absent du provisioning de cette instance précise de VM.</p>
+
+  <h2 class="section">4. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Sans objet au sens strict — aucun service réel à sécuriser ici.</li>
+      <li>Documenter précisément la liste des services réellement provisionnés dans une VM
+      de labo, pour éviter ce type d'ambiguïté lors d'un audit ultérieur.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">5. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms3/jules/port-8181-diagnostic.md"><code>ms3/jules/port-8181-diagnostic.md</code></a> (dépôt du labo)</li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — DIAGNOSTIC PORT 8181</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

@@ -34,7 +34,7 @@
   ACL.</p>
 
   <figure class="capture" id="cap-recon">
-    <img src="../images/distcc/01-recon-nmap.png" alt="Résultat du scan nmap sur le port 3632">
+    <img src="../images/ms1-distcc/01-recon-nmap.png" alt="Résultat du scan nmap sur le port 3632">
     <figcaption>
       <strong class="idx">a.</strong>
       <span class="desc">Résultat de <code>nmap -sC -sV -p 3632</code> et du script NSE
@@ -56,7 +56,7 @@
   d'IP/réseaux autorisés (<code>--allow</code>), fixée au démarrage du démon.</p>
 
   <figure class="capture" id="cap-recherche">
-    <img src="../images/distcc/02-recherche-module.png" alt="Résultat de searchsploit puis search distcc dans msfconsole">
+    <img src="../images/ms1-distcc/02-recherche-module.png" alt="Résultat de searchsploit puis search distcc dans msfconsole">
     <figcaption>
       <strong class="idx">b.</strong>
       <span class="desc"><code>searchsploit distcc</code> puis <code>search distcc</code> :
@@ -65,7 +65,7 @@
   </figure>
 
   <figure class="capture" id="cap-info-cve">
-    <img src="../images/distcc/03-info-cve.png" alt="Résultat de info sur le module, section References">
+    <img src="../images/ms1-distcc/03-info-cve.png" alt="Résultat de info sur le module, section References">
     <figcaption>
       <strong class="idx">c.</strong>
       <span class="desc">Résultat de <code>info</code> sur le module : la section
@@ -80,7 +80,7 @@
   complet (capture d).</p>
 
   <figure class="capture" id="cap-sonde">
-    <img src="../images/distcc/04-sonder-protocole.png" alt="Sonde manuelle du protocole distcc">
+    <img src="../images/ms1-distcc/04-sonder-protocole.png" alt="Sonde manuelle du protocole distcc">
     <figcaption>
       <strong class="idx">d.</strong>
       <span class="desc">Connexion TCP brute au port 3632 avec un handshake minimal — un
@@ -98,7 +98,7 @@
   (capture e).</p>
 
   <figure class="capture" id="cap-acl">
-    <img src="../images/distcc/05-corriger-acl.png" alt="Correction de l'ACL distcc sur la console VM">
+    <img src="../images/ms1-distcc/05-corriger-acl.png" alt="Correction de l'ACL distcc sur la console VM">
     <figcaption>
       <strong class="idx">e.</strong>
       <span class="desc">Ajout de notre sous-réseau à la liste <code>--allow</code> dans le
@@ -113,7 +113,7 @@
   (capture f), puis <code>exploit -z</code> déclenche l'attaque (capture g).</p>
 
   <figure class="capture" id="cap-config">
-    <img src="../images/distcc/06-exploit-config.png" alt="Configuration du module avant lancement">
+    <img src="../images/ms1-distcc/06-exploit-config.png" alt="Configuration du module avant lancement">
     <figcaption>
       <strong class="idx">f.</strong>
       <span class="desc">Chargement du module et configuration des options avant le
@@ -122,7 +122,7 @@
   </figure>
 
   <figure class="capture" id="cap-launch">
-    <img src="../images/distcc/07-exploit-launch.png" alt="Déclenchement de exploit -z">
+    <img src="../images/ms1-distcc/07-exploit-launch.png" alt="Déclenchement de exploit -z">
     <figcaption>
       <strong class="idx">g.</strong>
       <span class="desc"><code>exploit -z</code> en action : ouverture de la session shell
@@ -136,7 +136,7 @@
   service — pas root, contrairement à la backdoor vsftpd.</p>
 
   <figure class="capture" id="cap-preuve">
-    <img src="../images/distcc/08-preuve-acces.png" alt="Preuve d'accès shell daemon">
+    <img src="../images/ms1-distcc/08-preuve-acces.png" alt="Preuve d'accès shell daemon">
     <figcaption>
       <strong class="idx">h.</strong>
       <span class="desc">Sortie de <code>sessions -i 1 -c id</code> confirmant l'accès sous

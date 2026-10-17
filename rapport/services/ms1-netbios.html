@@ -35,23 +35,12 @@
   <h2 class="section">1. Identification</h2>
   <p>Interrogation NetBIOS directe, sans passer par SMB.</p>
 
-  <pre class="terminal">$ nmblookup -A 192.168.56.102
-Looking up status of 192.168.56.102
-	METASPLOITABLE  <00> -         B <ACTIVE>
-	METASPLOITABLE  <03> -         B <ACTIVE>
-	METASPLOITABLE  <20> -         B <ACTIVE>
-	..__MSBROWSE__. <01> - <GROUP> B <ACTIVE>
-	WORKGROUP       <00> - <GROUP> B <ACTIVE>
-	WORKGROUP       <1d> -         B <ACTIVE>
-	WORKGROUP       <1e> - <GROUP> B <ACTIVE></pre>
-
   <figure class="capture" id="cap-nmblookup">
     <img src="../images/ms1-netbios/01-nmblookup.png" alt="Résultat de nmblookup -A">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc"><code>METASPLOITABLE&lt;20&gt;</code> (File Server Service, partage de
       fichiers actif) et <code>WORKGROUP&lt;00&gt;</code> (nom du domaine).</span>
-      <span class="fname">images/ms1-netbios/01-nmblookup.png</span>
     </figcaption>
   </figure>
 

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payroll App — Injection SQL — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">Payroll App — Injection SQL</h1>
+    <h2 class="doc-subtitle">Contournement d'authentification et exfiltration complète d'une table de données sensibles via une requête SQL non échappée</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>HTTP — port <code class="mono">80</code>, <code class="mono">/payroll_app.php</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 3 — <code class="mono">172.28.128.3</code></td></tr>
+      <tr><td class="label">CVE</td><td>— (appli maison, faille de code applicative)</td></tr>
+      <tr><td class="label">Résultat</td><td><strong>15 employés exfiltrés</strong> (salaires inclus), sans authentification valide</td></tr>
+      <tr><td class="label">Testé par</td><td>KAGBAHINTO Jules</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Repérée dans le listing du webroot (recon partagée avec Drupal). Appli minimaliste : un
+  formulaire de login (<code>user</code>/<code>password</code>) qui se poste lui-même, en
+  <strong>PHP 5.4.5</strong> (capture a) — ancien, cohérent avec une appli jamais mise à jour.</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms3-payroll-sqli/01-recon-form.png" alt="Formulaire de login et en-têtes PHP">
+    <figcaption>
+      <strong class="idx">a.</strong>
+      <span class="desc">Le formulaire minimal (<code>user</code>/<code>password</code>) et
+      l'en-tête <code>X-Powered-By: PHP/5.4.5</code>.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Démarche d'exploitation — injection SQL</h2>
+  <p>Pas de CVE à chercher ici — appli maison, pas un produit connu. Hypothèse testée en
+  premier : identifiants faibles. <code>admin:admin</code> fonctionne (login accepté), mais
+  la table retournée est vide. Hypothèse suivante : injection SQL classique sur les deux
+  champs (capture b) — <strong>la table entière est retournée</strong>.</p>
+
+  <blockquote class="evidence">
+    <strong>Mécanisme.</strong> La requête est probablement
+    <code>WHERE user='$user' AND password='$password'</code>, avec les valeurs POST
+    concaténées directement sans échappement. En remplaçant les deux champs par
+    <code>' OR '1'='1</code>, la clause devient toujours vraie
+    (<code>WHERE user='' OR '1'='1' AND password='' OR '1'='1'</code>) et retourne toutes
+    les lignes, peu importe les vraies valeurs stockées.
+  </blockquote>
+
+  <p>Confirmation que l'injection doit toucher les <strong>deux</strong> champs : injecter
+  seulement <code>user</code> avec un mot de passe quelconque donne une table vide — logique,
+  <code>AND</code> est prioritaire sur <code>OR</code> en SQL, donc neutraliser un seul côté
+  de la clause ne suffit pas. Un guillemet seul casse la requête (page totalement vide),
+  signe d'une concaténation directe sans échappement ni requête préparée.</p>
+
+  <figure class="capture" id="cap-injection">
+    <img src="../images/ms3-payroll-sqli/02-injection-sql.png" alt="Injection SQL sur les deux champs retournant la table complète">
+    <figcaption>
+      <strong class="idx">b.</strong>
+      <span class="desc"><code>' OR '1'='1</code> sur <code>user</code> et
+      <code>password</code> : la requête retourne toutes les lignes de la table.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Preuve d'accès obtenu</h2>
+  <p>Dump complet de la table : <strong>15 employés</strong>, avec leur salaire — données
+  clairement sensibles pour une appli RH (capture c). À noter : le compte
+  <code>chewbacca</code> trouvé par énumération Samba (<a href="ms3-samba-enum.html">page
+  dédiée</a>) apparaît aussi ici comme employé — probablement un fil conducteur volontaire du
+  labo sur plusieurs services, pas une coïncidence technique.</p>
+
+  <figure class="capture" id="cap-preuve">
+    <img src="../images/ms3-payroll-sqli/03-dump-table.png" alt="Table complète des 15 employés avec salaires">
+    <figcaption>
+      <strong class="idx">c.</strong>
+      <span class="desc">Les 15 lignes exfiltrées (nom, prénom, salaire) sans
+      authentification valide.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Utiliser des <strong>requêtes préparées</strong> (prepared statements) partout où
+      une entrée utilisateur entre dans une requête SQL — élimine la classe entière de
+      vulnérabilité, pas juste ce cas précis.</li>
+      <li>Ne jamais construire une requête SQL par concaténation de chaînes avec des données
+      POST brutes.</li>
+      <li>Mettre à jour PHP (5.4.5 est hors support depuis des années) et le serveur SQL
+      sous-jacent.</li>
+      <li>Chiffrer ou masquer les données sensibles (salaires) même en cas d'accès légitime,
+      par défense en profondeur.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">5. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms3/jules/payroll-sqli.md"><code>ms3/jules/payroll-sqli.md</code></a> (dépôt du labo)</li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — PAYROLL APP INJECTION SQL</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

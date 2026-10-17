@@ -40,10 +40,6 @@
   <p>Le service <code>nfs</code> est présent sur 2049. On liste alors les répertoires
   exportés :</p>
 
-  <pre class="terminal">$ showmount -e 192.168.56.101
-Export list for 192.168.56.101:
-/ *</pre>
-
   <blockquote class="evidence">
     <code>/ *</code> : la <strong>racine entière</strong> du système est exportée à
     <strong>toutes</strong> les adresses (<code>*</code>). Associée à
@@ -54,10 +50,9 @@ Export list for 192.168.56.101:
   <figure class="capture" id="cap-recon">
     <img src="../images/ms2-nfs/01-recon-showmount.png" alt="rpcinfo et showmount révélant l'export racine">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc"><code>rpcinfo -p</code> confirme le service NFS, et
       <code>showmount -e</code> révèle l'export <code>/ *</code> (racine ouverte à tous).</span>
-      <span class="fname">images/ms2-nfs/01-recon-showmount.png</span>
     </figcaption>
   </figure>
 
@@ -102,11 +97,10 @@ drwx------  2 root root  ... .ssh
   <figure class="capture" id="cap-proof">
     <img src="../images/ms2-nfs/02-mount-shadow.png" alt="Montage NFS, lecture de /etc/shadow et du home de root">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc">Montage de <code>192.168.56.101:/</code>, puis lecture de
       <code>/etc/shadow</code> (hash root exposé) et du home de root — preuve de l'accès root au
       filesystem distant via <code>no_root_squash</code>.</span>
-      <span class="fname">images/ms2-nfs/02-mount-shadow.png</span>
     </figcaption>
   </figure>
 

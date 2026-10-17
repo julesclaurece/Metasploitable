@@ -35,45 +35,22 @@
   <h2 class="section">1. Identification</h2>
   <p>Reconnaissance du service et de sa version exacte.</p>
 
-  <pre class="terminal">$ nmap -sC -sV -p 139,445 192.168.56.102
-139/tcp open  netbios-ssn Samba smbd 3.X - 4.X (workgroup: WORKGROUP)
-445/tcp open  netbios-ssn Samba smbd 3.0.20-Debian (workgroup: WORKGROUP)
-Host script results:
-| smb-os-discovery:
-|   OS: Unix (Samba 3.0.20-Debian)
-|   Computer name: metasploitable
-smb-security-mode:
-  account_used: guest
-  message_signing: disabled (dangerous, but default)</pre>
-
   <p><strong>Samba 3.0.20-Debian</strong> confirmé. Le script NSE a pu se connecter en tant que
   <code>guest</code> tout seul — premier signal que l'accès anonyme est permis.</p>
 
   <figure class="capture" id="cap-recon">
     <img src="../images/ms1-samba-enum/01-recon-nmap.png" alt="Scan nmap des ports 139/445">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc">Version Samba identifiée (<code>3.0.20-Debian</code>) et
       <code>account_used: guest</code> — l'accès anonyme fonctionne déjà au niveau du script
       de détection.</span>
-      <span class="fname">images/ms1-samba-enum/01-recon-nmap.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">2. Méthode d'énumération</h2>
   <p>Pas de CVE sur cette page — l'objectif est l'énumération, pas l'exploitation d'une faille
   précise. Première étape : lister les partages sans authentification.</p>
-
-  <pre class="terminal">$ smbclient -L //192.168.56.102/ -N
-Anonymous login successful
-
-	Sharename       Type      Comment
-	---------       ----      -------
-	print$          Disk      Printer Drivers
-	tmp             Disk      oh noes!
-	opt             Disk
-	IPC$            IPC       IPC Service (metasploitable server (Samba 3.0.20-Debian))
-	ADMIN$          IPC       IPC Service (metasploitable server (Samba 3.0.20-Debian))</pre>
 
   <p><code>-N</code> = pas de mot de passe demandé. <strong>Anonymous login successful</strong> :
   le serveur accepte les connexions sans identifiants (null session). Deux partages disque
@@ -82,10 +59,9 @@ Anonymous login successful
   <figure class="capture" id="cap-shares">
     <img src="../images/ms1-samba-enum/02-smbclient-shares.png" alt="Liste des partages SMB en anonyme">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc"><code>Anonymous login successful</code> et liste des partages
       (<code>tmp</code>, <code>opt</code>) récupérés sans identifiants.</span>
-      <span class="fname">images/ms1-samba-enum/02-smbclient-shares.png</span>
     </figcaption>
   </figure>
 
@@ -97,17 +73,6 @@ Anonymous login successful
     à chaque RID existant — sans jamais fournir de mot de passe.
   </blockquote>
 
-  <pre class="terminal">$ enum4linux -a 192.168.56.102
-user:[root] rid:[0x3e8]
-user:[msfadmin] rid:[0xbb8]
-user:[user] rid:[0xbba]
-user:[service] rid:[0xbbc]
-user:[www-data] rid:[0x42a]
-user:[tomcat55] rid:[0x4c4]
-user:[postgres] rid:[0x4c0]
-...
-(35 comptes au total)</pre>
-
   <p><strong>35 comptes système listés</strong>, dont les comptes applicatifs déjà croisés sur
   d'autres services (<code>tomcat55</code>, <code>postgres</code>, <code>mysql</code>,
   <code>proftpd</code>...) et les comptes utilisateurs du labo (<code>msfadmin</code>,
@@ -117,11 +82,10 @@ user:[postgres] rid:[0x4c0]
   <figure class="capture" id="cap-users">
     <img src="../images/ms1-samba-enum/03-enum4linux-users.png" alt="Liste des utilisateurs via RID cycling enum4linux">
     <figcaption>
-      <strong class="idx">3.</strong>
+      <strong class="idx">c.</strong>
       <span class="desc">Extrait de la section <em>Users on ... via RID cycling</em> :
       <code>root</code>, <code>msfadmin</code> et les autres comptes récupérés sans
       authentification.</span>
-      <span class="fname">images/ms1-samba-enum/03-enum4linux-users.png</span>
     </figcaption>
   </figure>
 

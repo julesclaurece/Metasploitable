@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat App — XSS stockée — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">Chat App — XSS stockée</h1>
+    <h2 class="doc-subtitle">Injection de script exécutée automatiquement chez tous les clients connectés, cookie de session non protégé</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>HTTP — port <code class="mono">80</code>, <code class="mono">/chat/</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 3 — <code class="mono">172.28.128.3</code></td></tr>
+      <tr><td class="label">CVE</td><td>— (appli maison modifiée depuis un tutoriel public)</td></tr>
+      <tr><td class="label">Résultat</td><td><strong>XSS stockée confirmée</strong>, vol de session possible (cookie sans <code>HttpOnly</code>)</td></tr>
+      <tr><td class="label">Testé par</td><td>KAGBAHINTO Jules</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Un commentaire dans le code source HTML révèle l'origine de l'appli — un tutoriel
+  public de chat simple, explicitement <strong>modifié</strong> par les auteurs de MS3
+  (capture a). Indice fort qu'une faille y a été introduite volontairement par rapport au
+  tutoriel d'origine.</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms3-chat-xss/01-recon-source.png" alt="Commentaire HTML révélant l'origine de l'appli">
+    <figcaption>
+      <strong class="idx">a.</strong>
+      <span class="desc">Le commentaire <code>"downloaded from ... and modified"</code> —
+      signal qu'une faille a été ajoutée par rapport au code original.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Démarche — trouver les vrais endpoints</h2>
+  <p>Deviner les noms de fichiers à partir du tutoriel original (<code>chat.php</code>,
+  <code>send.php</code>...) n'a rien donné. Un vrai scan <code>gobuster</code> trouve
+  <code>post.php</code> — mais une première tentative de login échoue à révéler la page de
+  chat.</p>
+
+  <blockquote class="evidence">
+    <strong>Piège rencontré.</strong> Soumettre le formulaire de login sans suivre la
+    redirection (<code>-L</code>) ni conserver les cookies (<code>-c</code>/<code>-b</code>)
+    ne montre que le même formulaire en boucle. En mode verbeux, la vraie réponse est un
+    <code>302 Found</code> qui pose un cookie et redirige — sans ces deux options
+    <code>curl</code>, la page de chat réelle n'est jamais vue.
+  </blockquote>
+
+  <p>Une fois corrigé (cookie jar + <code>-L</code>), la vraie page de chat révèle son
+  JavaScript : les messages sont postés sur <code>post.php</code> (paramètre
+  <code>text</code>, pas <code>message</code>) et le log est lu via
+  <code>read_log.php</code>, rafraîchi <strong>toutes les secondes</strong> pour tous les
+  clients connectés (capture b).</p>
+
+  <figure class="capture" id="cap-decouverte">
+    <img src="../images/ms3-chat-xss/02-decouverte-endpoints.png" alt="Découverte des vrais endpoints post.php et read_log.php">
+    <figcaption>
+      <strong class="idx">b.</strong>
+      <span class="desc">Le JavaScript de la page de chat révèle <code>post.php</code>
+      (paramètre <code>text</code>) et le polling automatique de
+      <code>read_log.php</code> toutes les secondes.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Preuve d'accès — XSS stockée confirmée</h2>
+  <p>Un payload <code>&lt;script&gt;</code> posté via <code>post.php</code> est inséré
+  <strong>tel quel</strong>, sans échappement, dans la sortie de <code>read_log.php</code> —
+  injectée directement dans le DOM côté client, exécutée automatiquement chez tout
+  utilisateur ayant la page ouverte, sans action de sa part (capture c).</p>
+
+  <figure class="capture" id="cap-xss">
+    <img src="../images/ms3-chat-xss/03-xss-stockee.png" alt="Payload script inséré tel quel dans le log">
+    <figcaption>
+      <strong class="idx">c.</strong>
+      <span class="desc">Le tag <code>&lt;script&gt;</code> apparaît non échappé dans la
+      sortie de <code>read_log.php</code> — exécution garantie chez les autres clients.</span>
+    </figcaption>
+  </figure>
+
+  <blockquote class="evidence">
+    <strong>Impact réel.</strong> Le cookie <code>PHPSESSID</code> n'a pas l'attribut
+    <code>HttpOnly</code> — <code>document.cookie</code> est donc accessible depuis un
+    payload JavaScript injecté. Un vrai payload (pas juste <code>alert()</code>) pourrait
+    exfiltrer la session de n'importe quel autre utilisateur du chat.
+  </blockquote>
+
+  <p><strong>Point de comparaison :</strong> le champ <code>name</code> utilisé au login,
+  lui, échappe correctement les entrées (<code>&lt;b&gt;</code> au lieu de HTML actif) — la
+  faille est précise, limitée au chemin <code>post.php</code> →
+  <code>read_log.php</code>, pas généralisée à toute l'appli.</p>
+
+  <h2 class="section">4. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Échapper systématiquement les données utilisateur avant insertion dans le HTML
+      retourné par <code>read_log.php</code> (<code>htmlspecialchars()</code>, déjà
+      correctement appliqué pour le champ <code>name</code>).</li>
+      <li>Ajouter l'attribut <code>HttpOnly</code> sur le cookie de session — empêche le vol
+      de session même en cas de XSS résiduelle ailleurs.</li>
+      <li>Revoir la politique CORS : <code>Access-Control-Allow-Origin: *</code> combiné à
+      <code>Access-Control-Allow-Credentials: true</code> est une configuration dangereuse.</li>
+      <li>Mettre en place une Content-Security-Policy restrictive, en défense en
+      profondeur.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">5. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms3/jules/chat-xss.md"><code>ms3/jules/chat-xss.md</code></a> (dépôt du labo)</li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — CHAT APP XSS STOCKÉE</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

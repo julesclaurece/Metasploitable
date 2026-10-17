@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnostic port 3000 — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">Diagnostic — Port 3000 (service mal exposé, pas crash-loopé)</h1>
+    <h2 class="doc-subtitle">Distinguer un port vraiment fermé d'un service vivant mais mal exposé — exercice de méthodologie réseau</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>Port <code class="mono">3000</code> — appli Sinatra « vulnérable » (<code>/opt/sinatra</code>)</td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 3 — <code class="mono">172.28.128.3</code></td></tr>
+      <tr><td class="label">CVE</td><td>— (exercice de diagnostic réseau, pas d'exploitation applicative)</td></tr>
+      <tr><td class="label">Résultat</td><td>Service fonctionnel, mais lié uniquement à <code class="mono">127.0.0.1</code> — cause confirmée, pas supposée</td></tr>
+      <tr><td class="label">Testé par</td><td>KAGBAHINTO Jules</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Le port apparaît fermé de façon stable sur cinq scans espacés de 20 secondes — pas
+  d'alternance <code>open</code>/<code>closed</code>, ce qui écarte d'emblée l'hypothèse d'un
+  crash-loop classique (capture a).</p>
+
+  <figure class="capture" id="cap-rescan">
+    <img src="../images/ms3-port-3000-diagnostic/01-rescan-periodique.png" alt="Cinq scans successifs montrant un port constamment fermé">
+    <figcaption>
+      <strong class="idx">a.</strong>
+      <span class="desc">Même résultat <code>closed</code> sur 5 cycles — pas
+      d'alternance, donc pas un crash-loop classique.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Démarche de diagnostic</h2>
+  <p>Plutôt que de deviner depuis l'extérieur, utilisation de l'accès shell déjà obtenu sur
+  cette cible (backdoor UnrealIRCd, voir page dédiée). Le job <code>upstart</code>
+  <code>sinatra</code> existe mais est arrêté ; relancé directement, puis vérification de
+  l'interface d'écoute réelle (capture b) — et non simplement « le port répond-il ? ».</p>
+
+  <figure class="capture" id="cap-diagnostic">
+    <img src="../images/ms3-port-3000-diagnostic/02-diagnostic-shell.png" alt="Service relancé et écoute confirmée uniquement sur loopback">
+    <figcaption>
+      <strong class="idx">b.</strong>
+      <span class="desc"><code>LISTEN 127.0.0.1:3000</code> — le service tourne, mais
+      n'écoute que sur l'interface de bouclage.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Conclusion du diagnostic</h2>
+  <p>Troisième catégorie, plus subtile que les deux prévues par l'exercice (« vraiment
+  fermé » vs « crash-loop ») : un service <strong>vivant, jamais crashé, mais jamais
+  exposé</strong> au-delà de la boucle locale. Invisible depuis Kali par construction, quel
+  que soit le nombre de tentatives — la cause n'est ni un pare-feu ni une instabilité, mais
+  un choix de binding (<code>127.0.0.1</code> au lieu de <code>0.0.0.0</code>).
+  Exploitation applicative non menée ici (hors du périmètre de cet exercice de diagnostic
+  réseau), nécessiterait un pivot depuis l'accès déjà obtenu sur la VM.</p>
+
+  <h2 class="section">4. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Si ce service n'est pas censé être exposé, le binding loopback est la bonne
+      pratique — mais documenter clairement cette intention pour éviter toute confusion
+      diagnostique lors d'un audit ultérieur.</li>
+      <li>Si l'exposition était voulue pour ce labo, corriger le binding vers
+      <code>0.0.0.0</code> ou une interface spécifique du réseau du labo.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">5. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms3/jules/port-3000-diagnostic.md"><code>ms3/jules/port-3000-diagnostic.md</code></a> (dépôt du labo)</li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — DIAGNOSTIC PORT 3000</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

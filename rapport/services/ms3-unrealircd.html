@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UnrealIRCd — Backdoor — TP-PENTEST-MS123</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <div class="classification-band">LABO PÉDAGOGIQUE — USAGE INTERNE</div>
+
+  <header class="doc-header">
+    <div class="agency">TP-PENTEST-MS123-2026 &middot; <a href="../index.html" style="color:inherit;">&larr; retour au sommaire</a></div>
+    <h1 class="doc-title">UnrealIRCd 3.2.8.1 — Backdoor Command Execution</h1>
+    <h2 class="doc-subtitle">Porte dérobée insérée dans l'archive officielle compromise — exploitation manuelle réussie, module Metasploit en échec dans ce labo</h2>
+    <table class="meta">
+      <tr><td class="label">Service / Port</td><td>IRC (UnrealIRCd) — port <code class="mono">6697</code></td></tr>
+      <tr><td class="label">Cible</td><td>Metasploitable 3 — <code class="mono">172.28.128.3</code></td></tr>
+      <tr><td class="label">CVE</td><td><a href="https://nvd.nist.gov/vuln/detail/CVE-2010-2075">CVE-2010-2075</a></td></tr>
+      <tr><td class="label">Résultat</td><td><strong>Exécution de commande confirmée</strong> (shell <code class="mono">boba_fett</code>) — à la main uniquement</td></tr>
+      <tr><td class="label">Testé par</td><td>KAGBAHINTO Jules</td></tr>
+    </table>
+  </header>
+
+  <h2 class="section">1. Identification</h2>
+  <p>Le port 6697 est conventionnellement réservé à IRC-over-TLS, mais une tentative de
+  handshake SSL échoue immédiatement avec une erreur caractéristique d'un serveur qui ne
+  parle pas réellement TLS sur ce port, confirmée par une connexion en clair qui obtient une
+  réponse IRC normale (capture a).</p>
+
+  <figure class="capture" id="cap-recon">
+    <img src="../images/ms3-unrealircd/01-recon-ssl.png" alt="nmap et test SSL montrant que le port 6697 n'est pas réellement TLS">
+    <figcaption>
+      <strong class="idx">a.</strong>
+      <span class="desc"><code>openssl s_client</code> échoue avec <code>wrong version
+      number</code> — le port 6697 annoncé en IRC est en réalité du texte brut.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">2. Méthode d'identification de la CVE et du module</h2>
+  <p><code>searchsploit unrealircd</code> puis <code>search unreal</code> dans
+  <code>msfconsole</code> trouvent <code>exploit/unix/irc/unreal_ircd_3281_backdoor</code>.
+  <code>info</code> confirme <strong>CVE-2010-2075</strong> (capture b).</p>
+
+  <blockquote class="evidence">
+    <strong>Mécanisme.</strong> Entre novembre 2009 et juin 2010, l'archive officielle
+    <code>Unreal3.2.8.1.tar.gz</code> a été compromise sur les miroirs de téléchargement —
+    une porte dérobée a été insérée directement dans le code source distribué. Toute ligne
+    reçue par le serveur et commençant par la chaîne magique <code>AB;</code> est passée
+    intégralement à <code>system()</code>, avant même d'être interprétée comme une commande
+    IRC. Ni authentification ni enregistrement <code>NICK</code>/<code>USER</code> requis.
+  </blockquote>
+
+  <figure class="capture" id="cap-recherche">
+    <img src="../images/ms3-unrealircd/02-recherche-module.png" alt="searchsploit, search et info du module unreal_ircd_3281_backdoor">
+    <figcaption>
+      <strong class="idx">b.</strong>
+      <span class="desc">Module trouvé puis <strong>CVE-2010-2075</strong> confirmée via
+      <code>info</code>.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">3. Démarche d'exploitation</h2>
+  <p>Le module détecte correctement la cible comme vulnérable (<em>"UnrealIRCd detected
+  after registration"</em>), mais <code>exploit -z</code> échoue systématiquement :
+  <em>"Exploit completed, but no session was created"</em> — testé avec et sans
+  <code>AutoCheck</code>, et avec quatre payloads différents, toujours le même résultat
+  (capture c).</p>
+
+  <p>La lecture du code source du module révèle la cause : <code>exploit()</code> envoie la
+  charge puis appelle <code>disconnect</code> <strong>immédiatement</strong>, sans aucune
+  pause. Or le serveur répond d'abord par un <code>NOTICE AUTH :*** Looking up your
+  hostname...</code> — une résolution DNS inverse bloquante qui retarde d'environ 30
+  secondes le moment où il reprend la lecture du buffer contenant <code>AB;...</code>. L'
+  option <code>wfsDelay =&nbsp;30</code> du module n'agit qu'<strong>après</strong> la fin
+  de <code>exploit()</code>, pas avant — elle ne protège pas contre cette fermeture
+  prématurée.</p>
+
+  <p>En reproduisant l'envoi à la main et en gardant simplement la socket ouverte 35
+  secondes avant de la fermer, la commande s'exécute parfaitement (capture d), confirmé par
+  un shell interactif complet rejouant le payload exact que Metasploit aurait dû envoyer
+  (capture e).</p>
+
+  <figure class="capture" id="cap-echec-msf">
+    <img src="../images/ms3-unrealircd/03-metasploit-echec.png" alt="Le module Metasploit détecte la vulnérabilité mais échoue à créer une session">
+    <figcaption>
+      <strong class="idx">c.</strong>
+      <span class="desc">Cible détectée vulnérable, mais <code>exploit -z</code> ne crée
+      jamais de session — quels que soient le payload et les options testées.</span>
+    </figcaption>
+  </figure>
+
+  <figure class="capture" id="cap-manuel">
+    <img src="../images/ms3-unrealircd/04-manuel-delay.png" alt="Reproduction manuelle réussie en gardant la socket ouverte 35 secondes">
+    <figcaption>
+      <strong class="idx">d.</strong>
+      <span class="desc">Socket maintenue ouverte 35s après l'envoi de <code>AB;...</code> :
+      <code>uid=1121(boba_fett)</code> reçu côté écoute.</span>
+    </figcaption>
+  </figure>
+
+  <figure class="capture" id="cap-shell">
+    <img src="../images/ms3-unrealircd/05-shell-interactif.png" alt="Shell interactif bash obtenu via le payload exact de Metasploit">
+    <figcaption>
+      <strong class="idx">e.</strong>
+      <span class="desc">Shell interactif <code>boba_fett</code> obtenu en rejouant à la
+      main le payload <code>cmd/unix/reverse_bash</code> de Metasploit.</span>
+    </figcaption>
+  </figure>
+
+  <h2 class="section">4. Preuve d'accès obtenu</h2>
+  <p>Accès non privilégié confirmé (<code>uid=1121(boba_fett)</code>) — cohérent avec
+  <code>'Privileged' =&gt; false</code> annoncé par le module lui-même, UnrealIRCd ne tourne
+  pas en root sur cette installation. Piste de post-exploitation non explorée ici :
+  <code>boba_fett</code> appartient au groupe <code>docker</code> (capture d).</p>
+
+  <h2 class="section">5. Remédiation</h2>
+  <div class="verdict-box">
+    <span class="verdict-label">RECOMMANDATIONS</span>
+    <ul style="margin-top:6px;">
+      <li>Vérifier systématiquement le hash/la signature d'une archive tierce avant
+      déploiement — c'est exactement ce contrôle qui aurait détecté le tarball compromis
+      entre 2009 et 2010.</li>
+      <li>Mettre à jour UnrealIRCd vers une version post-2010, toutes compilées depuis du
+      code source propre.</li>
+      <li>Surveiller les sommes de contrôle officielles de tout paquet tiers avant mise en
+      production, pas seulement pour IRC.</li>
+    </ul>
+  </div>
+
+  <h2 class="section">6. Sources</h2>
+  <ul>
+    <li>Write-up technique détaillé : <a href="../../ms3/jules/unrealircd.md"><code>ms3/jules/unrealircd.md</code></a> (dépôt du labo)</li>
+    <li>CVE-2010-2075 : <a href="https://nvd.nist.gov/vuln/detail/CVE-2010-2075">nvd.nist.gov/vuln/detail/CVE-2010-2075</a></li>
+  </ul>
+
+  <div class="status-footer">FIN DE SECTION — UNREALIRCD BACKDOOR</div>
+  <div class="signoff">KAGBAHINTO Jules &amp; ZANNOU Josaphat</div>
+
+</div>
+</body>
+</html>

